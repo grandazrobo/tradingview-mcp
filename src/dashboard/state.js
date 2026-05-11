@@ -75,6 +75,7 @@ export function hitTp1(state, id, tp1_price) {
   trade.tp1_hit = true;
   trade.tp1_pnl = tp1_pnl;
   trade.status = 'tp1_hit';
+  trade.stop_price = trade.entry_price;  // move SL to breakeven on TP1
   state.balance = parseFloat((state.balance + tp1_pnl).toFixed(2));
   saveState(state);
   return trade;
