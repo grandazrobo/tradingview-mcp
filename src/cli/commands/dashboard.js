@@ -27,15 +27,36 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
   }
 
   // ── Price polling ──────────────────────────────────────────────
-  async function pollPrice() {
+
+  // TradingView poll — keeps currentQuote fresh for header display
+  async function pollTVPrice() {
     try {
       const q = await data.getQuote({});
       if (q?.last && q?.symbol) {
         currentQuote = q;
-        priceMap[baseOf(q.symbol)] = q.last;
-        checkAutoClose(baseOf(q.symbol), q.last);
+        updatePrice(baseOf(q.symbol), q.last);
       }
     } catch { /* TV may be loading */ }
+  }
+
+  // Binance REST poll — fetches prices for every open trade symbol simultaneously
+  async function pollAllPrices() {
+    const bases = [...new Set(state.open_trades.map(t => baseOf(t.symbol)))];
+    if (bases.length === 0) return;
+    const symbols = bases.map(b => b + 'USDT');
+    try {
+      const url = `https://api.binance.com/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(symbols))}`;
+      const resp = await fetch(url);
+      const prices = await resp.json();
+      for (const { symbol, price } of prices) {
+        updatePrice(symbol.replace(/USDT$/i, ''), parseFloat(price));
+      }
+    } catch { /* external API unavailable */ }
+  }
+
+  function updatePrice(base, price) {
+    priceMap[base] = price;
+    checkAutoClose(base, price);
   }
 
   function checkAutoClose(base, price) {
@@ -61,8 +82,9 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     }
   }
 
-  setInterval(pollPrice, 3000);
-  await pollPrice();
+  setInterval(pollTVPrice, 3000);
+  setInterval(pollAllPrices, 3000);
+  await Promise.all([pollTVPrice(), pollAllPrices()]);
 
   // ── Static ─────────────────────────────────────────────────────
   app.get('/', (_req, res) =>
