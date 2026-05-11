@@ -415,6 +415,8 @@ function renderState() {
         </div>
         <div class="trade-levels">
           <span class="lv">Entry <span class="ev">${fmt(t.entry_price)}</span></span>
+          <span class="lv">Now <span class="ev">${t.current_price ? fmt(t.current_price) : '—'}</span></span>
+          <span class="lv">Margin <span class="ev">$${t.margin_usd.toLocaleString()}</span></span>
           <span class="lv">Stop <span class="sv">${fmt(t.stop_price)}</span></span>
           <span class="lv">TP1 <span class="t1v">${fmt(t.tp1_price)}</span> <span style="color:#333">(${t.tp1_split}%)</span></span>
           <span class="lv">TP2 <span class="t2v">${fmt(t.tp2_price)}</span> <span style="color:#333">(${t.tp2_split}%)</span></span>

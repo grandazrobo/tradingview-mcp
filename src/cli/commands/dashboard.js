@@ -20,21 +20,27 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
   let currentQuote = null;
   const priceMap = {};  // symbol → last price
 
+  // Normalise to base currency so KUCOIN:SOLUSDT and BINANCE:SOLUSDT both key as "SOL"
+  function baseOf(sym) {
+    const ticker = sym.includes(':') ? sym.split(':')[1] : sym;
+    return ticker.replace(/(USDT|USDC|USD|BUSD|PERP)$/i, '').toUpperCase();
+  }
+
   // ── Price polling ──────────────────────────────────────────────
   async function pollPrice() {
     try {
       const q = await data.getQuote({});
       if (q?.last && q?.symbol) {
         currentQuote = q;
-        priceMap[q.symbol] = q.last;
-        checkAutoClose(q.symbol, q.last);
+        priceMap[baseOf(q.symbol)] = q.last;
+        checkAutoClose(baseOf(q.symbol), q.last);
       }
     } catch { /* TV may be loading */ }
   }
 
-  function checkAutoClose(symbol, price) {
+  function checkAutoClose(base, price) {
     for (const trade of [...state.open_trades]) {
-      if (trade.symbol !== symbol) continue;
+      if (baseOf(trade.symbol) !== base) continue;
       const isLong = trade.direction === 'long';
 
       // TP1 check
@@ -72,7 +78,8 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
   app.get('/api/state', (_req, res) => {
     const open = state.open_trades.map(t => ({
       ...t,
-      pnl: priceMap[t.symbol] ? calcLivePnl(t, priceMap[t.symbol]) : 0,
+      current_price: priceMap[baseOf(t.symbol)] ?? null,
+      pnl: priceMap[baseOf(t.symbol)] ? calcLivePnl(t, priceMap[baseOf(t.symbol)]) : 0,
     }));
     res.json({ ...state, open_trades: open, scorecard: calcScorecard(state) });
   });
@@ -87,7 +94,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       return res.status(400).json({ error: 'TP splits must sum to 100' });
     }
     const price = entry_price === 'market'
-      ? (priceMap[symbol] ?? currentQuote?.last ?? entry_price)
+      ? (priceMap[baseOf(symbol)] ?? currentQuote?.last ?? entry_price)
       : Number(entry_price);
     const trade = openTrade(state, {
       symbol, direction,
