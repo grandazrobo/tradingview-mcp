@@ -456,6 +456,10 @@ function setDir(long) {
   document.getElementById('tabShort').classList.toggle('active', !long);
   document.getElementById('submitBtn').style.background = long ? '#00d084' : '#ff4444';
   document.getElementById('submitBtn').style.color = long ? '#000' : '#fff';
+  document.getElementById('submitBtn').textContent = (long ? 'Enter Long' : 'Enter Short') + ' @ Market';
+  document.getElementById('quickBtn').style.background = long ? '#00d084' : '#ff4444';
+  document.getElementById('quickBtn').style.color = long ? '#000' : '#fff';
+  syncPcts();
   renderPrice();
 }
 
@@ -488,17 +492,20 @@ function getEntry() {
   return parseFloat(v);
 }
 
-function calcPct(entry, level) {
-  if (!entry || !level) return '';
-  const p = (level - entry) / entry * 100;
-  return (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
+// % shown as return on margin (e.g. 40x leverage, 1% move = 40% of margin)
+// Sign is gain/loss relative to direction: positive = profit, negative = loss
+function calcMarginPct(entry, level) {
+  if (!entry || !level || isNaN(level)) return '';
+  const move = (level - entry) / entry;
+  const pct = move * leverage * (isLong ? 1 : -1) * 100;
+  return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
 }
 
 function syncPcts() {
   const e = getEntry();
-  document.getElementById('stopPct').value = calcPct(e, parseFloat(document.getElementById('stopPrice').value));
-  document.getElementById('tp1Pct').value = calcPct(e, parseFloat(document.getElementById('tp1Price').value));
-  document.getElementById('tp2Pct').value = calcPct(e, parseFloat(document.getElementById('tp2Price').value));
+  document.getElementById('stopPct').value = calcMarginPct(e, parseFloat(document.getElementById('stopPrice').value));
+  document.getElementById('tp1Pct').value = calcMarginPct(e, parseFloat(document.getElementById('tp1Price').value));
+  document.getElementById('tp2Pct').value = calcMarginPct(e, parseFloat(document.getElementById('tp2Price').value));
   calcRR();
   updatePayouts();
 }
@@ -511,7 +518,8 @@ function pctBack(pctId, priceId) {
     const e = getEntry();
     const pct = parseFloat(document.getElementById(pctId).value.replace(/[%+]/g,''));
     if (!e || isNaN(pct)) return;
-    document.getElementById(priceId).value = (e * (1 + pct/100)).toFixed(2);
+    // reverse: price = entry * (1 + pct / (leverage * direction * 100))
+    document.getElementById(priceId).value = (e * (1 + pct / (leverage * (isLong ? 1 : -1) * 100))).toFixed(2);
     calcRR(); updatePayouts();
   });
 }
