@@ -287,7 +287,7 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
       <div class="panel-title">Trade History</div>
       <div id="historyWrap">
         <table class="history-table">
-          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Lev</th><th>Margin</th><th>P&amp;L</th><th>R:R</th><th>Result</th></tr></thead>
+          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Lev</th><th>Margin</th><th>TP1 Profit</th><th>Total P&amp;L</th><th>R:R</th><th>Result</th></tr></thead>
           <tbody id="historyBody"></tbody>
         </table>
         <div class="empty-history" id="emptyHistory">No completed trades yet</div>
@@ -409,8 +409,8 @@ function renderState() {
           <span class="trade-dir ${t.direction}">${t.direction === 'long' ? 'Long' : 'Short'}</span>
           <span class="trade-symbol">${t.symbol.split(':').pop()}</span>
           <span class="trade-lev">${t.leverage}×</span>
-          ${t.tp1_hit ? '<span class="tp1-badge">TP1 ✓</span>' : ''}
-          <span class="trade-pnl ${pnl < 0 ? 'neg' : ''}">${fmtPnl(pnl)}</span>
+          ${t.tp1_hit ? `<span class="tp1-badge">TP1 ✓ <span style="color:#00d084">${fmtPnl(t.tp1_pnl)}</span></span>` : ''}
+          <span style="font-size:10px;color:#555;margin-right:2px;">${t.tp1_hit ? 'Unreal.' : 'P&L'}</span><span class="trade-pnl ${pnl < 0 ? 'neg' : ''}">${fmtPnl(pnl)}</span>
           <button class="close-btn" onclick="closeTrade('${t.id}')">Close</button>
         </div>
         <div class="trade-levels">
@@ -439,6 +439,7 @@ function renderState() {
       <td>${fmt(t.exit_price)} <span class="exit-tag">${t.exit_reason?.toUpperCase()}</span></td>
       <td>${t.leverage}×</td>
       <td>${fmt(t.margin_usd)}</td>
+      <td class="${t.tp1_pnl > 0 ? 'win' : ''}">${t.tp1_pnl > 0 ? fmtPnl(t.tp1_pnl) : '—'}</td>
       <td class="${t.pnl >= 0 ? 'win' : 'loss'}">${fmtPnl(t.pnl)}</td>
       <td>${rr}</td>
       <td class="${t.pnl >= 0 ? 'win' : 'loss'}">${t.pnl >= 0 ? 'WIN' : 'STOP'}</td>
