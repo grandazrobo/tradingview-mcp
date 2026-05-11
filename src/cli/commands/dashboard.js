@@ -18,23 +18,23 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
 
   let state = reset ? resetState() : loadState();
   let currentQuote = null;
+  const priceMap = {};  // symbol → last price
 
   // ── Price polling ──────────────────────────────────────────────
   async function pollPrice() {
     try {
       const q = await data.getQuote({});
-      if (q?.last) {
+      if (q?.last && q?.symbol) {
         currentQuote = q;
-        checkAutoClose(q.last);
+        priceMap[q.symbol] = q.last;
+        checkAutoClose(q.symbol, q.last);
       }
     } catch { /* TV may be loading */ }
   }
 
-  function checkAutoClose(price) {
-    const quoteSymbol = currentQuote?.symbol;
+  function checkAutoClose(symbol, price) {
     for (const trade of [...state.open_trades]) {
-      // Only check trades whose symbol matches the current quote symbol
-      if (quoteSymbol && trade.symbol !== quoteSymbol) continue;
+      if (trade.symbol !== symbol) continue;
       const isLong = trade.direction === 'long';
 
       // TP1 check
@@ -72,7 +72,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
   app.get('/api/state', (_req, res) => {
     const open = state.open_trades.map(t => ({
       ...t,
-      pnl: currentQuote?.last ? calcLivePnl(t, currentQuote.last) : 0,
+      pnl: priceMap[t.symbol] ? calcLivePnl(t, priceMap[t.symbol]) : 0,
     }));
     res.json({ ...state, open_trades: open, scorecard: calcScorecard(state) });
   });
@@ -87,7 +87,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       return res.status(400).json({ error: 'TP splits must sum to 100' });
     }
     const price = entry_price === 'market'
-      ? (currentQuote?.last ?? entry_price)
+      ? (priceMap[symbol] ?? currentQuote?.last ?? entry_price)
       : Number(entry_price);
     const trade = openTrade(state, {
       symbol, direction,
