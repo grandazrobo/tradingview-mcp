@@ -31,7 +31,10 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
   }
 
   function checkAutoClose(price) {
+    const quoteSymbol = currentQuote?.symbol;
     for (const trade of [...state.open_trades]) {
+      // Only check trades whose symbol matches the current quote symbol
+      if (quoteSymbol && trade.symbol !== quoteSymbol) continue;
       const isLong = trade.direction === 'long';
 
       // TP1 check
