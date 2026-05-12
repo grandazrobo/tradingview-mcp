@@ -26,6 +26,19 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .balance-pnl.up { color:#00d084; }
 .balance-pnl.dn { color:#ff4444; }
 
+/* ── Mode Bar ── */
+.mode-bar { display:flex; gap:6px; margin-bottom:12px; }
+.mode-btn {
+  flex:1; padding:8px 4px; border-radius:6px; border:1px solid #2a2a2a;
+  background:#1a1a1a; color:#555; font-family:inherit; font-size:11px;
+  font-weight:700; text-transform:uppercase; letter-spacing:1px;
+  cursor:pointer; transition:all 0.15s;
+}
+.mode-btn:hover { border-color:#444; color:#888; }
+.mode-btn.active { background:#0d2b1f; border-color:#00d084; color:#00d084; }
+.mode-btn.not-found { border-color:#2a2a2a; color:#333; cursor:not-allowed; }
+.mode-btn.not-found::after { content:' ⚠'; }
+
 /* ── Grid ── */
 .grid { display:grid; grid-template-columns:320px 1fr; gap:12px; }
 .panel { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:8px; padding:14px; }
@@ -158,6 +171,13 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 </style>
 </head>
 <body>
+
+<div class="mode-bar">
+  <button class="mode-btn" data-mode="scalping">Scalping</button>
+  <button class="mode-btn" data-mode="day_trading">Day Trading</button>
+  <button class="mode-btn" data-mode="swing_trading">Swing Trading</button>
+  <button class="mode-btn" data-mode="accumulation">Accumulation</button>
+</div>
 
 <div class="header">
   <div class="pair-bar">
@@ -299,6 +319,53 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 <div class="toast" id="toast"></div>
 
 <script>
+// ── Mode bar ──────────────────────────────────────────────────
+const modeBtns = document.querySelectorAll('.mode-btn');
+
+async function loadTabAvailability() {
+  try {
+    const { tabs } = await (await fetch('/api/tabs')).json();
+    const foundModes = new Set(tabs.filter(t => t.mode).map(t => t.mode));
+    modeBtns.forEach(btn => {
+      if (!foundModes.has(btn.dataset.mode)) btn.classList.add('not-found');
+      else btn.classList.remove('not-found');
+    });
+  } catch { /* TV not running */ }
+}
+
+function setActiveMode(mode) {
+  modeBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
+}
+
+modeBtns.forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (btn.classList.contains('not-found')) return;
+    const mode = btn.dataset.mode;
+    setActiveMode(mode); // optimistic
+    try {
+      const res = await fetch('/api/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json();
+      if (!data.tab_found) {
+        setActiveMode(null); // revert — tab not found
+        btn.classList.add('not-found');
+      }
+    } catch {
+      setActiveMode(null);
+    }
+  });
+});
+
+// Restore active mode and tab availability on page load
+(async () => {
+  const state = await (await fetch('/api/state')).json();
+  if (state.active_mode) setActiveMode(state.active_mode);
+  await loadTabAvailability();
+})();
+
 // ── State ───────────────────────────────────────────────────────
 let lastQuote = null;
 let appState = null;
