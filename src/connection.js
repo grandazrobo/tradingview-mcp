@@ -215,7 +215,8 @@ export async function findTargetByMode(modeKey) {
 
 export async function activateTarget(targetId) {
   // CDP REST API — brings the target tab to front in TradingView Desktop
-  await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${targetId}`);
+  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${targetId}`);
+  if (!resp.ok) throw new Error(`CDP activate failed for ${targetId}: ${resp.status}`);
 }
 
 export async function switchTarget(targetId) {
@@ -224,10 +225,12 @@ export async function switchTarget(targetId) {
     client = null;
     targetInfo = null;
   }
+  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
+  const targets = await resp.json();
+  targetInfo = targets.find(t => t.id === targetId) ?? { id: targetId };
   client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: targetId });
   await client.Runtime.enable();
   await client.Page.enable();
   await client.DOM.enable();
-  targetInfo = { id: targetId };
   return client;
 }
