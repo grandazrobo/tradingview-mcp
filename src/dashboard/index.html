@@ -324,11 +324,15 @@ const modeBtns = document.querySelectorAll('.mode-btn');
 
 async function loadTabAvailability() {
   try {
-    const { tabs } = await (await fetch('/api/tabs')).json();
+    const { tabs = [] } = await (await fetch('/api/tabs')).json();
     const foundModes = new Set(tabs.filter(t => t.mode).map(t => t.mode));
     modeBtns.forEach(btn => {
-      if (!foundModes.has(btn.dataset.mode)) btn.classList.add('not-found');
-      else btn.classList.remove('not-found');
+      if (!foundModes.has(btn.dataset.mode)) {
+        btn.classList.add('not-found');
+        btn.classList.remove('active');
+      } else {
+        btn.classList.remove('not-found');
+      }
     });
   } catch { /* TV not running */ }
 }
@@ -355,14 +359,17 @@ modeBtns.forEach(btn => {
       }
     } catch {
       setActiveMode(null);
+      showToast('Mode switch failed', true);
     }
   });
 });
 
 // Restore active mode and tab availability on page load
 (async () => {
-  const state = await (await fetch('/api/state')).json();
-  if (state.active_mode) setActiveMode(state.active_mode);
+  try {
+    const state = await (await fetch('/api/state')).json();
+    if (state.active_mode) setActiveMode(state.active_mode);
+  } catch { /* server not ready */ }
   await loadTabAvailability();
 })();
 
