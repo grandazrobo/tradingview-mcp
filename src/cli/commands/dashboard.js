@@ -8,6 +8,9 @@ import {
   loadState, resetState, openTrade, closeTrade, hitTp1,
   calcLivePnl, calcScorecard, saveState,
 } from '../../dashboard/state.js';
+import {
+  notifyTradeOpen, notifyTp1Hit, notifyTradeClose,
+} from '../../discord/notifier.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -67,18 +70,18 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       // TP1 check
       if (!trade.tp1_hit) {
         const tp1Hit = isLong ? price >= trade.tp1_price : price <= trade.tp1_price;
-        if (tp1Hit) hitTp1(state, trade.id, trade.tp1_price);
+        if (tp1Hit) { const t = hitTp1(state, trade.id, trade.tp1_price); if (t) notifyTp1Hit(t); }
       }
 
       // TP2 check (after TP1 hit)
       if (trade.tp1_hit) {
         const tp2Hit = isLong ? price >= trade.tp2_price : price <= trade.tp2_price;
-        if (tp2Hit) { closeTrade(state, trade.id, trade.tp2_price, 'tp2'); continue; }
+        if (tp2Hit) { const t = closeTrade(state, trade.id, trade.tp2_price, 'tp2'); if (t) notifyTradeClose(t); continue; }
       }
 
       // Stop check
       const stopHit = isLong ? price <= trade.stop_price : price >= trade.stop_price;
-      if (stopHit) closeTrade(state, trade.id, trade.stop_price, 'stop');
+      if (stopHit) { const t = closeTrade(state, trade.id, trade.stop_price, 'stop'); if (t) notifyTradeClose(t); }
     }
   }
 
@@ -129,6 +132,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       margin_usd: Number(margin_usd),
       leverage: Number(leverage),
     });
+    notifyTradeOpen(trade);
     res.json({ success: true, trade });
   });
 
@@ -138,6 +142,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     if (!exit) return res.status(400).json({ error: 'No price available' });
     const closed = closeTrade(state, id, Number(exit), 'manual');
     if (!closed) return res.status(404).json({ error: 'Trade not found' });
+    notifyTradeClose(closed);
     res.json({ success: true, trade: closed });
   });
 
