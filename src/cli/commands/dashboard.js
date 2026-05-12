@@ -19,8 +19,8 @@ import {
 const MODES = {
   scalping:      { label: 'Scalping',      resolutions: ['30S', '3', '5', '15'] },
   day_trading:   { label: 'Day Trading',   resolutions: ['15', '30', '60'] },
-  swing_trading: { label: 'Swing Trading', resolutions: ['240', 'D'] },
-  accumulation:  { label: 'Accumulation',  resolutions: ['D', 'W', 'M'] },
+  swing_trading: { label: 'Swing Trading', resolutions: ['240', 'D', '1D'] },
+  accumulation:  { label: 'Accumulation',  resolutions: ['W', '1W', 'M', '1M'] },
 };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

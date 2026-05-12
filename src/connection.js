@@ -180,8 +180,8 @@ const TAB_INFO_EXPR = `
 const MODE_RESOLUTIONS = {
   scalping:      ['30S', '3', '5', '15'],
   day_trading:   ['15', '30', '60'],
-  swing_trading: ['240', 'D'],
-  accumulation:  ['D', 'W', 'M'],
+  swing_trading: ['240', 'D', '1D'],
+  accumulation:  ['W', '1W', 'M', '1M'],
 };
 
 export async function listTabsWithInfo() {
