@@ -11,6 +11,17 @@ import {
 import {
   notifyTradeOpen, notifyTp1Hit, notifyTradeClose,
 } from '../../discord/notifier.js';
+import { startBot } from '../../discord/bot.js';
+import {
+  findTargetByMode, activateTarget, switchTarget, listTabsWithInfo,
+} from '../../connection.js';
+
+const MODES = {
+  scalping:      { label: 'Scalping',      resolutions: ['30S', '3', '5', '15'] },
+  day_trading:   { label: 'Day Trading',   resolutions: ['15', '30', '60'] },
+  swing_trading: { label: 'Swing Trading', resolutions: ['240', 'D'] },
+  accumulation:  { label: 'Accumulation',  resolutions: ['D', 'W', 'M'] },
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +31,17 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
   app.use(express.json());
 
   let state = reset ? resetState() : loadState();
+
+  if (state.active_mode && MODES[state.active_mode]) {
+    findTargetByMode(state.active_mode)
+      .then(target => {
+        if (target) return switchTarget(target.id);
+        state.active_mode = null;
+        saveState(state);
+      })
+      .catch(() => { state.active_mode = null; });
+  }
+
   let currentQuote = null;
   const priceMap = {};  // symbol → last price
 
@@ -109,6 +131,41 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     res.json({ ...state, open_trades: open, scorecard: calcScorecard(state) });
   });
 
+  app.get('/api/tabs', async (_req, res) => {
+    try {
+      const tabs = await listTabsWithInfo();
+      const modeTabs = tabs.map(tab => ({
+        ...tab,
+        mode: Object.entries(MODES).find(([, { resolutions }]) =>
+          tab.resolution && resolutions.includes(tab.resolution)
+        )?.[0] ?? null,
+      }));
+      res.json({ tabs: modeTabs });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/mode', async (req, res) => {
+    const { mode } = req.body;
+    if (!mode || !MODES[mode]) {
+      return res.status(400).json({ error: `Unknown mode. Valid: ${Object.keys(MODES).join(', ')}` });
+    }
+    const target = await findTargetByMode(mode);
+    if (!target) {
+      return res.json({ success: false, mode, tab_found: false });
+    }
+    try {
+      await activateTarget(target.id);
+      await switchTarget(target.id);
+      state.active_mode = mode;
+      saveState(state);
+      res.json({ success: true, mode, tab_found: true, resolution: target.resolution });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post('/api/trade/open', (req, res) => {
     const { symbol, direction, entry_price, stop_price, tp1_price, tp1_split,
             tp2_price, tp2_split, margin_usd, leverage } = req.body;
@@ -161,6 +218,9 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       res.status(500).json({ error: e.message });
     }
   });
+
+  // ── Discord bot ────────────────────────────────────────────────
+  startBot(() => state).catch(e => console.error('[Discord] Bot error:', e.message));
 
   // ── Start ──────────────────────────────────────────────────────
   app.listen(port, () => {
