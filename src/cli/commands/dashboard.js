@@ -158,9 +158,13 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     try {
       await activateTarget(target.id);
       await switchTarget(target.id);
+      if (target.symbol && !state.pairs.includes(target.symbol)) {
+        state.pairs.push(target.symbol);
+      }
       state.active_mode = mode;
       saveState(state);
-      res.json({ success: true, mode, tab_found: true, resolution: target.resolution });
+      await pollTVPrice();
+      res.json({ success: true, mode, tab_found: true, resolution: target.resolution, symbol: target.symbol });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

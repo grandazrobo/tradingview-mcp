@@ -356,6 +356,9 @@ modeBtns.forEach(btn => {
       if (!data.tab_found) {
         setActiveMode(null); // revert — tab not found
         btn.classList.add('not-found');
+      } else {
+        await Promise.all([fetchState(), fetchQuote()]);
+        if (data.symbol) document.getElementById('pairSelect').value = data.symbol;
       }
     } catch {
       setActiveMode(null);
