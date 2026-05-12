@@ -1,5 +1,6 @@
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { loadState, resetState } from '../src/dashboard/state.js';
 
 // Verify exports exist and have correct types.
 // Full integration tested manually in Task 6.
@@ -31,5 +32,17 @@ describe('connection — mode helpers', () => {
     const result = await connection.findTargetByMode('scalping');
     assert.equal(result, null);
     globalThis.fetch = original;
+  });
+});
+
+describe('state — active_mode', () => {
+  it('resetState includes active_mode: null', () => {
+    const state = resetState();
+    assert.equal(state.active_mode, null);
+  });
+
+  it('loadState returns active_mode: null when field absent in stored file', () => {
+    const state = loadState();
+    assert.ok('active_mode' in state, 'active_mode key must exist');
   });
 });

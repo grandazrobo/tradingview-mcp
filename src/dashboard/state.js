@@ -11,12 +11,15 @@ const DEFAULT_STATE = {
   open_trades: [],
   history: [],
   pairs: ['KUCOIN:SOLUSDT', 'KUCOIN:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:AVAXUSDT'],
+  active_mode: null,
 };
 
 export function loadState() {
   if (!existsSync(STATE_FILE)) return structuredClone(DEFAULT_STATE);
   try {
-    return JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+    if (!('active_mode' in state)) state.active_mode = null;
+    return state;
   } catch {
     return structuredClone(DEFAULT_STATE);
   }
