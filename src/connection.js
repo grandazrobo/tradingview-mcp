@@ -232,6 +232,5 @@ export async function switchTarget(targetId) {
   await client.Runtime.enable();
   await client.Page.enable();
   await client.DOM.enable();
-  try { await client.Page.bringToFront(); } catch {}
   return client;
 }
