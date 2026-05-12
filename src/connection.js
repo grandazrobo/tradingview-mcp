@@ -163,3 +163,71 @@ export async function getReplayApi() {
 export async function getMainSeriesBars() {
   return verifyAndReturn(KNOWN_PATHS.mainSeriesBars, 'Main Series Bars');
 }
+
+// ── Mode / tab helpers ─────────────────────────────────────────
+
+// Confirmed via probe 2026-05-13: symbol and resolution are readable per renderer.
+const TAB_INFO_EXPR = `
+  (() => {
+    try {
+      const c = window.TradingViewApi._activeChartWidgetWV.value();
+      return JSON.stringify({ symbol: c.symbol(), resolution: c.resolution() });
+    } catch(e) { return null; }
+  })()
+`;
+
+// Resolution sets per mode — first matching tab wins.
+const MODE_RESOLUTIONS = {
+  scalping:      ['30S', '3', '5', '15'],
+  day_trading:   ['15', '30', '60'],
+  swing_trading: ['240', 'D'],
+  accumulation:  ['D', 'W', 'M'],
+};
+
+export async function listTabsWithInfo() {
+  const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/list`);
+  const targets = await resp.json();
+  const chartTargets = targets.filter(
+    t => t.type === 'page' && /tradingview\.com\/chart/i.test(t.url)
+  );
+  const results = [];
+  for (const target of chartTargets) {
+    let symbol = null, resolution = null;
+    let c;
+    try {
+      c = await CDP({ host: CDP_HOST, port: CDP_PORT, target: target.id });
+      await c.Runtime.enable();
+      const r = await c.Runtime.evaluate({ expression: TAB_INFO_EXPR, returnByValue: true });
+      if (r.result?.value) ({ symbol, resolution } = JSON.parse(r.result.value));
+    } catch { /* skip unreachable targets */ }
+    finally { if (c) await c.close().catch(() => {}); }
+    results.push({ id: target.id, symbol, resolution, url: target.url });
+  }
+  return results;
+}
+
+export async function findTargetByMode(modeKey) {
+  const resolutions = MODE_RESOLUTIONS[modeKey];
+  if (!resolutions) return null;
+  const tabs = await listTabsWithInfo();
+  return tabs.find(t => t.resolution && resolutions.includes(t.resolution)) ?? null;
+}
+
+export async function activateTarget(targetId) {
+  // CDP REST API — brings the target tab to front in TradingView Desktop
+  await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${targetId}`);
+}
+
+export async function switchTarget(targetId) {
+  if (client) {
+    try { await client.close(); } catch {}
+    client = null;
+    targetInfo = null;
+  }
+  client = await CDP({ host: CDP_HOST, port: CDP_PORT, target: targetId });
+  await client.Runtime.enable();
+  await client.Page.enable();
+  await client.DOM.enable();
+  targetInfo = { id: targetId };
+  return client;
+}
