@@ -39,7 +39,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
         state.active_mode = null;
         saveState(state);
       })
-      .catch(() => { state.active_mode = null; });
+      .catch(() => { state.active_mode = null; saveState(state); });
   }
 
   let currentQuote = null;
