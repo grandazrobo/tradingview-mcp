@@ -27,6 +27,7 @@ import './commands/tab.js';
 import './commands/stream.js';
 import './commands/dashboard.js';
 import './commands/load-brief.js';
+import './commands/brief.js';
 
 // Run
 import { run } from './router.js';
