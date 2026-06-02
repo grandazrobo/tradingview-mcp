@@ -172,7 +172,8 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
 
   app.post('/api/trade/open', (req, res) => {
     const { symbol, direction, entry_price, stop_price, tp1_price, tp1_split,
-            tp2_price, tp2_split, margin_usd, leverage } = req.body;
+            tp2_price, tp2_split, margin_usd, leverage,
+            conviction, source, card_title } = req.body;
     if (!symbol || !direction || !entry_price || !stop_price || !tp1_price || !tp2_price) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -192,6 +193,9 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       tp2_split: Number(tp2_split),
       margin_usd: Number(margin_usd),
       leverage: Number(leverage),
+      conviction: conviction ?? null,
+      source: source ?? null,
+      card_title: card_title ?? null,
     });
     notifyTradeOpen(trade);
     res.json({ success: true, trade });
@@ -220,6 +224,23 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       res.json({ success: true, symbol });
     } catch (e) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Prevent Discord WebSocket errors (ECONNRESET, handshake timeouts) from crashing the process.
+  // These are transient network issues — the bot's own reconnect logic handles recovery.
+  process.on('uncaughtException', err => {
+    const isDiscordNetworkError = (
+      err.code === 'ECONNRESET' ||
+      err.message?.includes('handshake') ||
+      err.message?.includes('WebSocket') ||
+      err.message?.includes('ECONNREFUSED') ||
+      err.message?.includes('ETIMEDOUT')
+    );
+    if (isDiscordNetworkError) {
+      console.error('[Discord] Network error (will reconnect):', err.message);
+    } else {
+      throw err;
     }
   });
 

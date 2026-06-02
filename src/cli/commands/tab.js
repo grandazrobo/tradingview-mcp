@@ -17,9 +17,13 @@ register('tab', {
       handler: () => core.closeTab(),
     }],
     ['switch', {
-      description: 'Switch to a tab by index',
+      description: 'Switch to a tab by index or --name <partial>',
+      options: {
+        name: { type: 'string', description: 'Switch to tab by name (partial, case-insensitive)' },
+      },
       handler: (opts, positionals) => {
-        if (positionals[0] === undefined) throw new Error('Index required. Usage: tv tab switch 0');
+        if (opts.name) return core.switchTabByName({ name: opts.name });
+        if (positionals[0] === undefined) throw new Error('Index or --name required. Usage: tv tab switch 0  OR  tv tab switch --name "4-pane"');
         return core.switchTab({ index: positionals[0] });
       },
     }],

@@ -2,7 +2,8 @@
  * Core tab management logic.
  * Controls TradingView Desktop tabs via CDP and Electron keyboard shortcuts.
  */
-import { getClient, evaluate } from '../connection.js';
+import CDP from 'chrome-remote-interface';
+import { getClient, evaluate, switchTarget, activateTarget } from '../connection.js';
 
 const CDP_HOST = 'localhost';
 const CDP_PORT = 9222;
@@ -95,12 +96,71 @@ export async function switchTab({ index }) {
 
   const target = tabs.tabs[idx];
 
-  // Use CDP Target.activateTarget to bring the tab to front
   try {
-    const resp = await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${target.id}`);
-    const text = await resp.text();
+    await fetch(`http://${CDP_HOST}:${CDP_PORT}/json/activate/${target.id}`);
     return { success: true, action: 'switched', index: idx, tab_id: target.id, chart_id: target.chart_id };
   } catch (e) {
     throw new Error(`Failed to activate tab ${idx}: ${e.message}`);
   }
+}
+
+const PANE_COUNT_EXPR = `
+  (function() {
+    try {
+      var cwc = window.TradingViewApi._chartWidgetCollection;
+      var count = cwc.inlineChartsCount;
+      if (typeof count === 'object' && count && typeof count.value === 'function') count = count.value();
+      return count || 1;
+    } catch(e) { return 1; }
+  })()
+`;
+
+/**
+ * Switch to a tab by name. For "4-pane" style names, matches by pane count
+ * since TradingView doesn't expose superchart names in page titles.
+ * Opens a per-target CDP connection to read each tab's actual pane count.
+ */
+export async function switchTabByName({ name }) {
+  const tabs = await list();
+  const needle = name.toLowerCase();
+
+  // Parse requested pane count from name (e.g. "4-pane" → 4)
+  const paneMatch = needle.match(/^(\d+)[- ]pane/);
+  const requestedPanes = paneMatch ? parseInt(paneMatch[1], 10) : null;
+
+  let matchedTab = null;
+
+  if (requestedPanes) {
+    // Find by pane count — open a per-target CDP session for each tab
+    for (const tab of tabs.tabs) {
+      let c;
+      try {
+        c = await CDP({ host: CDP_HOST, port: CDP_PORT, target: tab.id });
+        await c.Runtime.enable();
+        const r = await c.Runtime.evaluate({ expression: PANE_COUNT_EXPR, returnByValue: true });
+        const panes = r.result?.value ?? 1;
+        if (panes >= requestedPanes) {
+          matchedTab = tab;
+          break;
+        }
+      } catch { /* skip unreachable */ }
+      finally { if (c) await c.close().catch(() => {}); }
+    }
+  } else {
+    // Fall back to title match
+    matchedTab = tabs.tabs.find(t => t.title.toLowerCase().includes(needle));
+  }
+
+  if (!matchedTab) {
+    const desc = requestedPanes
+      ? `No tab with ${requestedPanes}+ panes found`
+      : `No tab matching "${name}"`;
+    throw new Error(`${desc}. Open tabs: ${tabs.tabs.map(t => `"${t.title}"`).join(', ')}`);
+  }
+
+  // Activate visually and redirect all future CDP calls to this target
+  await activateTarget(matchedTab.id);
+  await switchTarget(matchedTab.id);
+
+  return { success: true, action: 'switched', index: matchedTab.index, title: matchedTab.title, tab_id: matchedTab.id, chart_id: matchedTab.chart_id };
 }

@@ -40,6 +40,7 @@ export function openTrade(state, params) {
     symbol, direction, entry_price, stop_price,
     tp1_price, tp1_split, tp2_price, tp2_split,
     margin_usd, leverage,
+    conviction = null, source = null, card_title = null,
   } = params;
   const position_size = margin_usd * leverage;
   const trade = {
@@ -55,6 +56,9 @@ export function openTrade(state, params) {
     margin_usd,
     leverage,
     position_size,
+    conviction,
+    source,
+    card_title,
     opened_at: new Date().toISOString(),
     status: 'open',
     tp1_hit: false,

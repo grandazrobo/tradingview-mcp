@@ -99,6 +99,26 @@ export function notifyTradeClose(trade) {
   return send(CH.pnl, { embeds: [pnlEmbed] });
 }
 
+export function notifyBriefLoaded({ date, loaded, skipped_parse, conflicts, top_trade, chart_unconfirmed }) {
+  const fields = [
+    { name: 'Top setup',     value: top_trade || '—',           inline: false },
+    { name: 'Loaded',        value: String(loaded),             inline: true },
+    { name: 'Skipped',       value: String(skipped_parse),      inline: true },
+    { name: 'Conflicts',     value: String(conflicts),          inline: true },
+  ];
+  if (chart_unconfirmed) {
+    fields.push({ name: '⚠️ Chart levels', value: 'Transcript-only — Discord charts unavailable', inline: false });
+  }
+  const embed = {
+    color: 0x7b9fff,
+    title: `📊 Chart Hackers Brief loaded — ${date}`,
+    fields,
+    timestamp: new Date().toISOString(),
+    footer: { text: 'Chart Hackers Auto-Brief' },
+  };
+  return send(CH.alerts, { embeds: [embed] });
+}
+
 export function notifyAnalysis(symbol, timeframe, content) {
   const embed = {
     color: 0x7b9fff,

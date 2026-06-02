@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paper Trading Dashboard — Layout</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; padding: 16px; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px 20px; margin-bottom: 12px; }
+  .header .symbol { font-size: 18px; font-weight: 700; color: #fff; }
+  .header .price { font-size: 22px; font-weight: 700; color: #00d084; }
+  .header .price.down { color: #ff4444; }
+  .header .meta { color: #888; font-size: 11px; }
+  .header .balance-box { text-align: right; }
+  .header .balance-label { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .header .balance-val { font-size: 20px; font-weight: 700; color: #fff; }
+  .header .balance-pnl { font-size: 12px; color: #00d084; }
+
+  .grid { display: grid; grid-template-columns: 320px 1fr; grid-template-rows: auto auto; gap: 12px; }
+
+  .panel { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; }
+  .panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #666; margin-bottom: 12px; }
+
+  /* ORDER ENTRY */
+  .order-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tab { flex: 1; padding: 8px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; }
+  .tab.long { background: #00d08422; color: #00d084; border: 1px solid #00d08444; }
+  .tab.short { background: #ff444422; color: #ff6666; border: 1px solid #ff444444; }
+  .tab.active.long { background: #00d084; color: #000; }
+  .tab.active.short { background: #ff4444; color: #fff; }
+
+  .quick-entry { background: #111; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+  .quick-label { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .quick-btn { width: 100%; padding: 12px; border-radius: 6px; border: none; background: #00d084; color: #000; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
+  .quick-meta { color: #666; font-size: 10px; margin-top: 6px; text-align: center; }
+
+  .divider { display: flex; align-items: center; gap: 8px; margin: 12px 0; color: #444; font-size: 10px; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #2a2a2a; }
+
+  .field { margin-bottom: 10px; }
+  .field label { display: block; color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .field input { width: 100%; background: #111; border: 1px solid #333; border-radius: 5px; padding: 7px 10px; color: #fff; font-family: inherit; font-size: 13px; }
+  .field input:focus { outline: none; border-color: #555; }
+
+  .leverage-row { display: flex; gap: 6px; margin-bottom: 14px; }
+  .lev-btn { flex: 1; padding: 6px 4px; background: #111; border: 1px solid #333; border-radius: 5px; color: #888; font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; text-align: center; }
+  .lev-btn.active { background: #2a1f5e; border-color: #7b6bff; color: #a89cff; }
+
+  .rr-preview { background: #111; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+  .rr-item { text-align: center; }
+  .rr-label { color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .rr-val { font-size: 14px; font-weight: 700; margin-top: 2px; }
+  .rr-val.green { color: #00d084; }
+  .rr-val.red { color: #ff4444; }
+  .rr-val.blue { color: #7b9fff; }
+
+  .submit-btn { width: 100%; padding: 12px; border-radius: 6px; border: none; background: #00d084; color: #000; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
+
+  /* SCORECARD */
+  .scorecard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+  .score-item { background: #111; border-radius: 6px; padding: 10px 12px; }
+  .score-label { color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .score-val { font-size: 18px; font-weight: 700; margin-top: 4px; color: #fff; }
+  .score-val.green { color: #00d084; }
+  .score-val.red { color: #ff4444; }
+  .score-val.blue { color: #7b9fff; }
+  .score-sub { color: #555; font-size: 10px; margin-top: 2px; }
+
+  /* ACTIVE TRADES */
+  .trade-row { display: flex; align-items: center; gap: 10px; background: #111; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; border-left: 3px solid #00d084; }
+  .trade-row.short { border-left-color: #ff4444; }
+  .trade-dir { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 3px 7px; border-radius: 4px; background: #00d08422; color: #00d084; }
+  .trade-dir.short { background: #ff444422; color: #ff6666; }
+  .trade-symbol { font-weight: 700; color: #fff; flex: 1; }
+  .trade-detail { color: #888; font-size: 11px; flex: 1; }
+  .trade-pnl { font-weight: 700; font-size: 14px; color: #00d084; min-width: 80px; text-align: right; }
+  .trade-pnl.neg { color: #ff4444; }
+  .close-btn { background: #222; border: 1px solid #444; color: #aaa; border-radius: 4px; padding: 4px 8px; font-family: inherit; font-size: 11px; cursor: pointer; }
+
+  /* HISTORY */
+  .history-table { width: 100%; border-collapse: collapse; }
+  .history-table th { color: #555; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 6px 8px; text-align: left; border-bottom: 1px solid #222; }
+  .history-table td { padding: 8px; border-bottom: 1px solid #1a1a1a; color: #ccc; font-size: 12px; }
+  .history-table td.win { color: #00d084; font-weight: 700; }
+  .history-table td.loss { color: #ff4444; font-weight: 700; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+  .badge.long { background: #00d08422; color: #00d084; }
+  .badge.short { background: #ff444422; color: #ff6666; }
+
+  .section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #666; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER BAR -->
+<div class="header">
+  <div>
+    <div class="symbol">KUCOIN:SOLUSDT &nbsp;<span style="color:#666;font-size:13px">1H</span></div>
+    <div style="margin-top:4px"><span class="price">$96.09</span> &nbsp;<span style="color:#00d084;font-size:13px">▲ +0.26%</span></div>
+    <div class="meta" style="margin-top:4px">Live via TradingView MCP &bull; Updated 3s ago</div>
+  </div>
+  <div class="balance-box">
+    <div class="balance-label">Paper Balance</div>
+    <div class="balance-val">$10,427.50</div>
+    <div class="balance-pnl">▲ +$427.50 (+4.28%)</div>
+  </div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="grid">
+
+  <!-- LEFT: ORDER ENTRY -->
+  <div>
+    <div class="panel">
+      <div class="panel-title">Order Entry</div>
+
+      <div class="order-tabs">
+        <button class="tab long active">▲ Long</button>
+        <button class="tab short">▼ Short</button>
+      </div>
+
+      <!-- QUICK MARKET ENTRY -->
+      <div class="quick-entry">
+        <div class="quick-label">Quick Entry — Market Price</div>
+        <button class="quick-btn">BUY @ $96.09</button>
+        <div class="quick-meta">Uses current leverage &amp; default margin</div>
+      </div>
+
+      <div class="divider">or set levels</div>
+
+      <!-- PRESET LEVELS -->
+      <div class="field">
+        <label>Entry Price</label>
+        <input type="text" value="96.09" placeholder="Entry price">
+      </div>
+      <div class="field">
+        <label>Stop Loss</label>
+        <input type="text" value="95.25" placeholder="Stop price" style="border-color:#ff444466;">
+      </div>
+      <div class="field">
+        <label>Take Profit</label>
+        <input type="text" value="97.20" placeholder="Target price" style="border-color:#00d08466;">
+      </div>
+      <div class="field">
+        <label>Margin (USD)</label>
+        <input type="text" value="1,000" placeholder="Margin amount">
+      </div>
+
+      <!-- LEVERAGE -->
+      <div class="section-label">Leverage</div>
+      <div class="leverage-row">
+        <div class="lev-btn">5×</div>
+        <div class="lev-btn active">10×</div>
+        <div class="lev-btn">20×</div>
+        <div class="lev-btn">40×</div>
+      </div>
+
+      <!-- R:R PREVIEW -->
+      <div class="rr-preview">
+        <div class="rr-item">
+          <div class="rr-label">Risk</div>
+          <div class="rr-val red">$84.00</div>
+        </div>
+        <div class="rr-item">
+          <div class="rr-label">Reward</div>
+          <div class="rr-val green">$111.00</div>
+        </div>
+        <div class="rr-item">
+          <div class="rr-label">R:R</div>
+          <div class="rr-val blue">1:1.32</div>
+        </div>
+        <div class="rr-item">
+          <div class="rr-label">Position</div>
+          <div class="rr-val">$10,000</div>
+        </div>
+      </div>
+
+      <button class="submit-btn">Enter Long @ $96.09</button>
+    </div>
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:12px;">
+
+    <!-- SCORECARD -->
+    <div class="panel">
+      <div class="panel-title">Scorecard</div>
+      <div class="scorecard">
+        <div class="score-item">
+          <div class="score-label">Balance</div>
+          <div class="score-val">$10,427</div>
+          <div class="score-sub">Started $10,000</div>
+        </div>
+        <div class="score-item">
+          <div class="score-label">Win Rate</div>
+          <div class="score-val green">68%</div>
+          <div class="score-sub">17 / 25 trades</div>
+        </div>
+        <div class="score-item">
+          <div class="score-label">Avg R:R</div>
+          <div class="score-val blue">1.8</div>
+          <div class="score-sub">Target ≥ 2.0</div>
+        </div>
+        <div class="score-item">
+          <div class="score-label">Streak</div>
+          <div class="score-val green">🔥 4W</div>
+          <div class="score-sub">Best: 7W</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVE TRADES -->
+    <div class="panel">
+      <div class="panel-title">Active Trades</div>
+      <div class="trade-row">
+        <span class="trade-dir">Long</span>
+        <span class="trade-symbol">SOLUSDT</span>
+        <span class="trade-detail">Entry $94.20 &bull; Stop $93.00 &bull; TP $96.50 &bull; 10×</span>
+        <span class="trade-pnl">+$189.00</span>
+        <button class="close-btn">Close</button>
+      </div>
+      <div class="trade-row short">
+        <span class="trade-dir short">Short</span>
+        <span class="trade-symbol">BTCUSDT</span>
+        <span class="trade-detail">Entry $82,200 &bull; Stop $82,800 &bull; TP $81,000 &bull; 5×</span>
+        <span class="trade-pnl neg">−$24.00</span>
+        <button class="close-btn">Close</button>
+      </div>
+    </div>
+
+    <!-- TRADE HISTORY -->
+    <div class="panel">
+      <div class="panel-title">Trade History</div>
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Dir</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>Lev</th>
+            <th>P&L</th>
+            <th>R:R</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SOLUSDT</td>
+            <td><span class="badge long">Long</span></td>
+            <td>$93.10</td>
+            <td>$95.80</td>
+            <td>10×</td>
+            <td class="win">+$290</td>
+            <td>2.25</td>
+            <td class="win">WIN</td>
+          </tr>
+          <tr>
+            <td>BTCUSDT</td>
+            <td><span class="badge short">Short</span></td>
+            <td>$82,400</td>
+            <td>$81,200</td>
+            <td>5×</td>
+            <td class="win">+$365</td>
+            <td>2.0</td>
+            <td class="win">WIN</td>
+          </tr>
+          <tr>
+            <td>SOLUSDT</td>
+            <td><span class="badge long">Long</span></td>
+            <td>$91.50</td>
+            <td>$90.80</td>
+            <td>20×</td>
+            <td class="loss">−$140</td>
+            <td>0.6</td>
+            <td class="loss">STOP</td>
+          </tr>
+          <tr>
+            <td>BTCUSDT</td>
+            <td><span class="badge long">Long</span></td>
+            <td>$79,200</td>
+            <td>$81,000</td>
+            <td>5×</td>
+            <td class="win">+$450</td>
+            <td>1.8</td>
+            <td class="win">WIN</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Demo interactivity
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', function() {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  this.classList.add('active');
+  const isLong = this.classList.contains('long');
+  document.querySelector('.quick-btn').textContent = isLong ? 'BUY @ $96.09' : 'SELL @ $96.09';
+  document.querySelector('.submit-btn').textContent = isLong ? 'Enter Long @ $96.09' : 'Enter Short @ $96.09';
+  document.querySelector('.quick-btn').style.background = isLong ? '#00d084' : '#ff4444';
+  document.querySelector('.submit-btn').style.background = isLong ? '#00d084' : '#ff4444';
+}));
+document.querySelectorAll('.lev-btn').forEach(b => b.addEventListener('click', function() {
+  document.querySelectorAll('.lev-btn').forEach(x => x.classList.remove('active'));
+  this.classList.add('active');
+}));
+</script>
+</body>
+</html>

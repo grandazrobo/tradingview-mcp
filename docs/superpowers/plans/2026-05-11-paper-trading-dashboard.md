@@ -1,3 +1,429 @@
+# Paper Trading Dashboard Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a `tv dashboard` command that serves a live paper trading dashboard connected to TradingView via the existing CDP connection.
+
+**Architecture:** Express server on port 3333 polls TradingView for live prices every 3 seconds and exposes a JSON API. A single-file HTML dashboard polls the API for price and state updates. Trades are simulated locally and persisted to `~/.tv-paper-trades.json`.
+
+**Tech Stack:** Node.js ES modules, Express (new dep), built-in `http`/`fs`/`crypto`, existing `src/core/data.js` + `src/core/chart.js`
+
+---
+
+## File Map
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/dashboard/state.js` | Create | State read/write, trade open/close, scorecard calc |
+| `src/dashboard/index.html` | Create | Single-file dashboard UI (HTML + CSS + JS) |
+| `src/cli/commands/dashboard.js` | Create | Express server, price polling, API routes, CLI registration |
+| `src/cli/index.js` | Modify | Import dashboard command |
+| `package.json` | Modify | Add `express` dependency |
+
+---
+
+## Task 1: Install Express and create state module
+
+**Files:**
+- Modify: `package.json`
+- Create: `src/dashboard/state.js`
+
+- [ ] **Step 1: Install express**
+
+```bash
+cd /Users/dazza/tradingview-mcp
+npm install express
+```
+
+Expected: `package.json` dependencies now includes `"express": "^4.x.x"`
+
+- [ ] **Step 2: Create `src/dashboard/state.js`**
+
+```javascript
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+import { randomUUID } from 'crypto';
+
+const STATE_FILE = join(homedir(), '.tv-paper-trades.json');
+
+const DEFAULT_STATE = {
+  starting_balance: 10000,
+  balance: 10000,
+  open_trades: [],
+  history: [],
+  pairs: ['KUCOIN:SOLUSDT', 'KUCOIN:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:AVAXUSDT'],
+};
+
+export function loadState() {
+  if (!existsSync(STATE_FILE)) return structuredClone(DEFAULT_STATE);
+  try {
+    return JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+  } catch {
+    return structuredClone(DEFAULT_STATE);
+  }
+}
+
+export function saveState(state) {
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+export function resetState() {
+  const state = structuredClone(DEFAULT_STATE);
+  saveState(state);
+  return state;
+}
+
+export function openTrade(state, params) {
+  const {
+    symbol, direction, entry_price, stop_price,
+    tp1_price, tp1_split, tp2_price, tp2_split,
+    margin_usd, leverage,
+  } = params;
+  const position_size = margin_usd * leverage;
+  const trade = {
+    id: randomUUID(),
+    symbol,
+    direction,
+    entry_price,
+    stop_price,
+    tp1_price,
+    tp1_split,
+    tp2_price,
+    tp2_split,
+    margin_usd,
+    leverage,
+    position_size,
+    opened_at: new Date().toISOString(),
+    status: 'open',
+    tp1_hit: false,
+    tp1_pnl: 0,
+    pnl: 0,
+    exit_price: null,
+    exit_reason: null,
+    closed_at: null,
+  };
+  state.open_trades.push(trade);
+  saveState(state);
+  return trade;
+}
+
+export function hitTp1(state, id, tp1_price) {
+  const trade = state.open_trades.find(t => t.id === id);
+  if (!trade || trade.tp1_hit) return null;
+  const sign = trade.direction === 'long' ? 1 : -1;
+  const partial_size = trade.position_size * (trade.tp1_split / 100);
+  const tp1_pnl = parseFloat((sign * ((tp1_price - trade.entry_price) / trade.entry_price) * partial_size).toFixed(2));
+  trade.tp1_hit = true;
+  trade.tp1_pnl = tp1_pnl;
+  trade.status = 'tp1_hit';
+  state.balance = parseFloat((state.balance + tp1_pnl).toFixed(2));
+  saveState(state);
+  return trade;
+}
+
+export function closeTrade(state, id, exit_price, exit_reason) {
+  const idx = state.open_trades.findIndex(t => t.id === id);
+  if (idx === -1) return null;
+  const trade = state.open_trades[idx];
+  const sign = trade.direction === 'long' ? 1 : -1;
+  const remaining_size = trade.tp1_hit
+    ? trade.position_size * (trade.tp2_split / 100)
+    : trade.position_size;
+  const close_pnl = parseFloat((sign * ((exit_price - trade.entry_price) / trade.entry_price) * remaining_size).toFixed(2));
+  const total_pnl = parseFloat((trade.tp1_pnl + close_pnl).toFixed(2));
+  const closed = {
+    ...trade,
+    status: 'closed',
+    exit_price,
+    exit_reason,
+    pnl: total_pnl,
+    closed_at: new Date().toISOString(),
+  };
+  state.open_trades.splice(idx, 1);
+  state.history.unshift(closed);
+  if (!trade.tp1_hit) {
+    state.balance = parseFloat((state.balance + total_pnl).toFixed(2));
+  } else {
+    state.balance = parseFloat((state.balance + close_pnl).toFixed(2));
+  }
+  saveState(state);
+  return closed;
+}
+
+export function calcLivePnl(trade, current_price) {
+  const sign = trade.direction === 'long' ? 1 : -1;
+  if (trade.tp1_hit) {
+    const remaining = trade.position_size * (trade.tp2_split / 100);
+    const unrealized = sign * ((current_price - trade.entry_price) / trade.entry_price) * remaining;
+    return parseFloat((trade.tp1_pnl + unrealized).toFixed(2));
+  }
+  return parseFloat((sign * ((current_price - trade.entry_price) / trade.entry_price) * trade.position_size).toFixed(2));
+}
+
+export function calcScorecard(state) {
+  const closed = state.history;
+  const wins = closed.filter(t => t.pnl > 0);
+  const win_rate = closed.length > 0 ? Math.round(wins.length / closed.length * 100) : 0;
+  const avg_rr = wins.length > 0
+    ? parseFloat((wins.reduce((sum, t) => {
+        const risk = Math.abs((t.stop_price - t.entry_price) / t.entry_price * t.position_size);
+        return sum + (risk > 0 ? t.pnl / risk : 0);
+      }, 0) / wins.length).toFixed(2))
+    : 0;
+  let streak = 0;
+  for (const t of closed) {
+    if (streak === 0) { streak = t.pnl > 0 ? 1 : -1; continue; }
+    if (t.pnl > 0 && streak > 0) streak++;
+    else if (t.pnl <= 0 && streak < 0) streak--;
+    else break;
+  }
+  return {
+    balance: state.balance,
+    starting_balance: state.starting_balance,
+    pnl_total: parseFloat((state.balance - state.starting_balance).toFixed(2)),
+    pnl_pct: parseFloat(((state.balance - state.starting_balance) / state.starting_balance * 100).toFixed(2)),
+    win_rate,
+    wins: wins.length,
+    total: closed.length,
+    avg_rr,
+    streak,
+  };
+}
+```
+
+- [ ] **Step 3: Smoke test state module**
+
+```bash
+node --input-type=module << 'EOF'
+import { loadState, openTrade, closeTrade, hitTp1, calcScorecard, resetState } from './src/dashboard/state.js';
+const state = resetState();
+console.assert(state.balance === 10000, 'balance should be 10000');
+const trade = openTrade(state, { symbol: 'KUCOIN:SOLUSDT', direction: 'long', entry_price: 96, stop_price: 95, tp1_price: 97, tp1_split: 30, tp2_price: 98, tp2_split: 70, margin_usd: 1000, leverage: 10 });
+console.assert(trade.position_size === 10000, 'position_size should be 10000');
+hitTp1(state, trade.id, 97);
+console.assert(state.open_trades[0].tp1_hit === true, 'tp1_hit should be true');
+closeTrade(state, trade.id, 98, 'tp2');
+console.assert(state.open_trades.length === 0, 'no open trades');
+console.assert(state.history.length === 1, 'one in history');
+const sc = calcScorecard(state);
+console.assert(sc.wins === 1, 'one win');
+console.log('All assertions passed. P&L:', state.history[0].pnl);
+EOF
+```
+
+Expected output: `All assertions passed. P&L: <positive number>`
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/dashboard/state.js package.json package-lock.json
+git commit -m "feat: add paper trading state module"
+```
+
+---
+
+## Task 2: Create Express server with API routes
+
+**Files:**
+- Create: `src/cli/commands/dashboard.js`
+
+- [ ] **Step 1: Create `src/cli/commands/dashboard.js`**
+
+```javascript
+import { register } from '../router.js';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { exec } from 'child_process';
+import * as data from '../../core/data.js';
+import * as chart from '../../core/chart.js';
+import {
+  loadState, resetState, openTrade, closeTrade, hitTp1,
+  calcLivePnl, calcScorecard, saveState,
+} from '../../dashboard/state.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+async function startDashboard({ port = 3333, reset = false } = {}) {
+  const { default: express } = await import('express');
+  const app = express();
+  app.use(express.json());
+
+  let state = reset ? resetState() : loadState();
+  let currentQuote = null;
+
+  // ── Price polling ──────────────────────────────────────────────
+  async function pollPrice() {
+    try {
+      const q = await data.getQuote({});
+      if (q?.last) {
+        currentQuote = q;
+        checkAutoClose(q.last);
+      }
+    } catch { /* TV may be loading */ }
+  }
+
+  function checkAutoClose(price) {
+    for (const trade of [...state.open_trades]) {
+      const isLong = trade.direction === 'long';
+
+      // TP1 check
+      if (!trade.tp1_hit) {
+        const tp1Hit = isLong ? price >= trade.tp1_price : price <= trade.tp1_price;
+        if (tp1Hit) hitTp1(state, trade.id, trade.tp1_price);
+      }
+
+      // TP2 check (after TP1 hit)
+      if (trade.tp1_hit) {
+        const tp2Hit = isLong ? price >= trade.tp2_price : price <= trade.tp2_price;
+        if (tp2Hit) { closeTrade(state, trade.id, trade.tp2_price, 'tp2'); continue; }
+      }
+
+      // Stop check
+      const stopHit = isLong ? price <= trade.stop_price : price >= trade.stop_price;
+      if (stopHit) closeTrade(state, trade.id, trade.stop_price, 'stop');
+    }
+  }
+
+  setInterval(pollPrice, 3000);
+  await pollPrice();
+
+  // ── Static ─────────────────────────────────────────────────────
+  app.get('/', (_req, res) =>
+    res.sendFile(join(__dirname, '../../dashboard/index.html'))
+  );
+
+  // ── API ────────────────────────────────────────────────────────
+  app.get('/api/quote', (_req, res) => {
+    if (!currentQuote) return res.status(503).json({ error: 'No quote yet' });
+    res.json(currentQuote);
+  });
+
+  app.get('/api/state', (_req, res) => {
+    const open = state.open_trades.map(t => ({
+      ...t,
+      pnl: currentQuote?.last ? calcLivePnl(t, currentQuote.last) : 0,
+    }));
+    res.json({ ...state, open_trades: open, scorecard: calcScorecard(state) });
+  });
+
+  app.post('/api/trade/open', (req, res) => {
+    const { symbol, direction, entry_price, stop_price, tp1_price, tp1_split,
+            tp2_price, tp2_split, margin_usd, leverage } = req.body;
+    if (!symbol || !direction || !entry_price || !stop_price || !tp1_price || !tp2_price) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if ((tp1_split + tp2_split) !== 100) {
+      return res.status(400).json({ error: 'TP splits must sum to 100' });
+    }
+    const price = entry_price === 'market'
+      ? (currentQuote?.last ?? entry_price)
+      : Number(entry_price);
+    const trade = openTrade(state, {
+      symbol, direction,
+      entry_price: price,
+      stop_price: Number(stop_price),
+      tp1_price: Number(tp1_price),
+      tp1_split: Number(tp1_split),
+      tp2_price: Number(tp2_price),
+      tp2_split: Number(tp2_split),
+      margin_usd: Number(margin_usd),
+      leverage: Number(leverage),
+    });
+    res.json({ success: true, trade });
+  });
+
+  app.post('/api/trade/close', (req, res) => {
+    const { id, price } = req.body;
+    const exit = price ?? currentQuote?.last;
+    if (!exit) return res.status(400).json({ error: 'No price available' });
+    const closed = closeTrade(state, id, Number(exit), 'manual');
+    if (!closed) return res.status(404).json({ error: 'Trade not found' });
+    res.json({ success: true, trade: closed });
+  });
+
+  app.post('/api/symbol', async (req, res) => {
+    const { symbol } = req.body;
+    if (!symbol) return res.status(400).json({ error: 'symbol required' });
+    try {
+      await chart.setSymbol({ symbol });
+      if (!state.pairs.includes(symbol)) {
+        state.pairs.push(symbol);
+        saveState(state);
+      }
+      await pollPrice();
+      res.json({ success: true, symbol });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Start ──────────────────────────────────────────────────────
+  app.listen(port, () => {
+    const url = `http://localhost:${port}`;
+    console.error(`\n  Paper Trading Dashboard\n  ${url}\n`);
+    // open browser on mac/linux
+    exec(`open "${url}" 2>/dev/null || xdg-open "${url}" 2>/dev/null || start "${url}"`, () => {});
+  });
+
+  // Keep process alive
+  await new Promise(() => {});
+}
+
+register('dashboard', {
+  description: 'Launch paper trading dashboard',
+  options: {
+    port: { type: 'string', short: 'p', description: 'Port (default: 3333)' },
+    reset: { type: 'boolean', description: 'Reset paper trading state' },
+  },
+  handler: (opts) => startDashboard({
+    port: opts.port ? Number(opts.port) : 3333,
+    reset: opts.reset ?? false,
+  }),
+});
+```
+
+- [ ] **Step 2: Wire into CLI — add import to `src/cli/index.js`**
+
+Open `src/cli/index.js`, find the last `import './commands/...'` line and add after it:
+
+```javascript
+import './commands/dashboard.js';
+```
+
+- [ ] **Step 3: Verify server starts (TradingView must be open)**
+
+```bash
+cd /Users/dazza/tradingview-mcp
+node src/cli/index.js dashboard --port 3334 &
+sleep 3
+curl -s http://localhost:3334/api/quote | head -c 200
+curl -s http://localhost:3334/api/state | head -c 200
+kill %1
+```
+
+Expected: JSON quote object with `last` price, JSON state with `balance: 10000`
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/cli/commands/dashboard.js src/cli/index.js
+git commit -m "feat: add dashboard server with price polling and trade API"
+```
+
+---
+
+## Task 3: Build dashboard HTML
+
+**Files:**
+- Create: `src/dashboard/index.html`
+
+- [ ] **Step 1: Create `src/dashboard/index.html`**
+
+This is the full single-file dashboard based on the approved v4 mockup. It polls `/api/quote` and `/api/state` every 3 seconds and renders everything live.
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,19 +451,6 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .balance-pnl { font-size:12px; }
 .balance-pnl.up { color:#00d084; }
 .balance-pnl.dn { color:#ff4444; }
-
-/* ── Mode Bar ── */
-.mode-bar { display:flex; gap:6px; margin-bottom:12px; }
-.mode-btn {
-  flex:1; padding:8px 4px; border-radius:6px; border:1px solid #2a2a2a;
-  background:#1a1a1a; color:#555; font-family:inherit; font-size:11px;
-  font-weight:700; text-transform:uppercase; letter-spacing:1px;
-  cursor:pointer; transition:all 0.15s;
-}
-.mode-btn:hover { border-color:#444; color:#888; }
-.mode-btn.active { background:#0d2b1f; border-color:#00d084; color:#00d084; }
-.mode-btn.not-found { border-color:#2a2a2a; color:#333; cursor:not-allowed; }
-.mode-btn.not-found::after { content:' ⚠'; }
 
 /* ── Grid ── */
 .grid { display:grid; grid-template-columns:320px 1fr; gap:12px; }
@@ -172,13 +585,6 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 </head>
 <body>
 
-<div class="mode-bar">
-  <button class="mode-btn" data-mode="scalping">Scalping</button>
-  <button class="mode-btn" data-mode="day_trading">Day Trading</button>
-  <button class="mode-btn" data-mode="swing_trading">Swing Trading</button>
-  <button class="mode-btn" data-mode="accumulation">Accumulation</button>
-</div>
-
 <div class="header">
   <div class="pair-bar">
     <span class="live-dot" id="liveDot"></span>
@@ -307,7 +713,7 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
       <div class="panel-title">Trade History</div>
       <div id="historyWrap">
         <table class="history-table">
-          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Lev</th><th>Margin</th><th>TP1 Profit</th><th>Total P&amp;L</th><th>R:R</th><th>Result</th></tr></thead>
+          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>Lev</th><th>Margin</th><th>P&amp;L</th><th>R:R</th><th>Result</th></tr></thead>
           <tbody id="historyBody"></tbody>
         </table>
         <div class="empty-history" id="emptyHistory">No completed trades yet</div>
@@ -319,63 +725,6 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 <div class="toast" id="toast"></div>
 
 <script>
-// ── Mode bar ──────────────────────────────────────────────────
-const modeBtns = document.querySelectorAll('.mode-btn');
-
-async function loadTabAvailability() {
-  try {
-    const { tabs = [] } = await (await fetch('/api/tabs')).json();
-    const foundModes = new Set(tabs.filter(t => t.mode).map(t => t.mode));
-    modeBtns.forEach(btn => {
-      if (!foundModes.has(btn.dataset.mode)) {
-        btn.classList.add('not-found');
-        btn.classList.remove('active');
-      } else {
-        btn.classList.remove('not-found');
-      }
-    });
-  } catch { /* TV not running */ }
-}
-
-function setActiveMode(mode) {
-  modeBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
-}
-
-modeBtns.forEach(btn => {
-  btn.addEventListener('click', async () => {
-    if (btn.classList.contains('not-found')) return;
-    const mode = btn.dataset.mode;
-    setActiveMode(mode); // optimistic
-    try {
-      const res = await fetch('/api/mode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
-      const data = await res.json();
-      if (!data.tab_found) {
-        setActiveMode(null); // revert — tab not found
-        btn.classList.add('not-found');
-      } else {
-        await Promise.all([fetchState(), fetchQuote()]);
-        if (data.symbol) document.getElementById('pairSelect').value = data.symbol;
-      }
-    } catch {
-      setActiveMode(null);
-      showToast('Mode switch failed', true);
-    }
-  });
-});
-
-// Restore active mode and tab availability on page load
-(async () => {
-  try {
-    const state = await (await fetch('/api/state')).json();
-    if (state.active_mode) setActiveMode(state.active_mode);
-  } catch { /* server not ready */ }
-  await loadTabAvailability();
-})();
-
 // ── State ───────────────────────────────────────────────────────
 let lastQuote = null;
 let appState = null;
@@ -486,20 +835,16 @@ function renderState() {
           <span class="trade-dir ${t.direction}">${t.direction === 'long' ? 'Long' : 'Short'}</span>
           <span class="trade-symbol">${t.symbol.split(':').pop()}</span>
           <span class="trade-lev">${t.leverage}×</span>
-          ${t.tp1_hit ? `<span class="tp1-badge">TP1 ✓ <span style="color:#00d084">${fmtPnl(t.tp1_pnl)}</span></span>` : ''}
-          ${t.conviction ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:${t.conviction==='HIGH'?'#7c4d00':'#3a3a00'};color:${t.conviction==='HIGH'?'#ffaa00':'#cccc00'}">${t.conviction}</span>` : ''}
-          <span style="font-size:10px;color:#555;margin-right:2px;">${t.tp1_hit ? 'Unreal.' : 'P&L'}</span><span class="trade-pnl ${pnl < 0 ? 'neg' : ''}">${fmtPnl(pnl)}</span>
+          ${t.tp1_hit ? '<span class="tp1-badge">TP1 ✓</span>' : ''}
+          <span class="trade-pnl ${pnl < 0 ? 'neg' : ''}">${fmtPnl(pnl)}</span>
           <button class="close-btn" onclick="closeTrade('${t.id}')">Close</button>
         </div>
         <div class="trade-levels">
           <span class="lv">Entry <span class="ev">${fmt(t.entry_price)}</span></span>
-          <span class="lv">Now <span class="ev">${t.current_price ? fmt(t.current_price) : '—'}</span></span>
-          <span class="lv">Margin <span class="ev">$${t.margin_usd.toLocaleString()}</span></span>
           <span class="lv">Stop <span class="sv">${fmt(t.stop_price)}</span></span>
           <span class="lv">TP1 <span class="t1v">${fmt(t.tp1_price)}</span> <span style="color:#333">(${t.tp1_split}%)</span></span>
           <span class="lv">TP2 <span class="t2v">${fmt(t.tp2_price)}</span> <span style="color:#333">(${t.tp2_split}%)</span></span>
         </div>
-        ${t.source ? `<div style="font-size:10px;color:#444;margin-top:4px;">${t.card_title || ''} · ${t.source}</div>` : ''}
       </div>`;
     }).join('');
   }
@@ -518,7 +863,6 @@ function renderState() {
       <td>${fmt(t.exit_price)} <span class="exit-tag">${t.exit_reason?.toUpperCase()}</span></td>
       <td>${t.leverage}×</td>
       <td>${fmt(t.margin_usd)}</td>
-      <td class="${t.tp1_pnl > 0 ? 'win' : ''}">${t.tp1_pnl > 0 ? fmtPnl(t.tp1_pnl) : '—'}</td>
       <td class="${t.pnl >= 0 ? 'win' : 'loss'}">${fmtPnl(t.pnl)}</td>
       <td>${rr}</td>
       <td class="${t.pnl >= 0 ? 'win' : 'loss'}">${t.pnl >= 0 ? 'WIN' : 'STOP'}</td>
@@ -535,10 +879,6 @@ function setDir(long) {
   document.getElementById('tabShort').classList.toggle('active', !long);
   document.getElementById('submitBtn').style.background = long ? '#00d084' : '#ff4444';
   document.getElementById('submitBtn').style.color = long ? '#000' : '#fff';
-  document.getElementById('submitBtn').textContent = (long ? 'Enter Long' : 'Enter Short') + ' @ Market';
-  document.getElementById('quickBtn').style.background = long ? '#00d084' : '#ff4444';
-  document.getElementById('quickBtn').style.color = long ? '#000' : '#fff';
-  syncPcts();
   renderPrice();
 }
 
@@ -571,20 +911,17 @@ function getEntry() {
   return parseFloat(v);
 }
 
-// % shown as return on margin (e.g. 40x leverage, 1% move = 40% of margin)
-// Sign is gain/loss relative to direction: positive = profit, negative = loss
-function calcMarginPct(entry, level) {
-  if (!entry || !level || isNaN(level)) return '';
-  const move = (level - entry) / entry;
-  const pct = move * leverage * (isLong ? 1 : -1) * 100;
-  return (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+function calcPct(entry, level) {
+  if (!entry || !level) return '';
+  const p = (level - entry) / entry * 100;
+  return (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
 }
 
 function syncPcts() {
   const e = getEntry();
-  document.getElementById('stopPct').value = calcMarginPct(e, parseFloat(document.getElementById('stopPrice').value));
-  document.getElementById('tp1Pct').value = calcMarginPct(e, parseFloat(document.getElementById('tp1Price').value));
-  document.getElementById('tp2Pct').value = calcMarginPct(e, parseFloat(document.getElementById('tp2Price').value));
+  document.getElementById('stopPct').value = calcPct(e, parseFloat(document.getElementById('stopPrice').value));
+  document.getElementById('tp1Pct').value = calcPct(e, parseFloat(document.getElementById('tp1Price').value));
+  document.getElementById('tp2Pct').value = calcPct(e, parseFloat(document.getElementById('tp2Price').value));
   calcRR();
   updatePayouts();
 }
@@ -597,8 +934,7 @@ function pctBack(pctId, priceId) {
     const e = getEntry();
     const pct = parseFloat(document.getElementById(pctId).value.replace(/[%+]/g,''));
     if (!e || isNaN(pct)) return;
-    // reverse: price = entry * (1 + pct / (leverage * direction * 100))
-    document.getElementById(priceId).value = (e * (1 + pct / (leverage * (isLong ? 1 : -1) * 100))).toFixed(2);
+    document.getElementById(priceId).value = (e * (1 + pct/100)).toFixed(2);
     calcRR(); updatePayouts();
   });
 }
@@ -731,3 +1067,81 @@ setInterval(() => {
 </script>
 </body>
 </html>
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/dashboard/index.html
+git commit -m "feat: add paper trading dashboard HTML"
+```
+
+---
+
+## Task 4: Wire CLI command and end-to-end test
+
+**Files:**
+- Modify: `src/cli/index.js`
+
+- [ ] **Step 1: Add dashboard import to `src/cli/index.js`**
+
+Find the last `import './commands/...'` line (currently `import './commands/stream.js'`) and add after it:
+
+```javascript
+import './commands/dashboard.js';
+```
+
+- [ ] **Step 2: Verify `tv dashboard --help` works**
+
+```bash
+node src/cli/index.js dashboard --help
+```
+
+Expected output includes:
+```
+Launch paper trading dashboard
+
+Options:
+  --port, -p   Port (default: 3333)
+  --reset      Reset paper trading state
+```
+
+- [ ] **Step 3: Start dashboard and verify all API endpoints**
+
+```bash
+node src/cli/index.js dashboard --port 3335 &
+sleep 4
+
+curl -s http://localhost:3335/api/quote
+echo ""
+curl -s http://localhost:3335/api/state | python3 -m json.tool | head -20
+echo ""
+
+# Open a test trade
+curl -s -X POST http://localhost:3335/api/trade/open \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"KUCOIN:SOLUSDT","direction":"long","entry_price":"market","stop_price":94,"tp1_price":97,"tp1_split":30,"tp2_price":99,"tp2_split":70,"margin_usd":500,"leverage":10}' 
+echo ""
+
+# Verify it appears in state
+curl -s http://localhost:3335/api/state | python3 -c "import sys,json; d=json.load(sys.stdin); print('Open trades:', len(d['open_trades'])); print('Balance:', d['balance'])"
+
+kill %1
+```
+
+Expected: quote JSON with live price, state with `open_trades: 1`
+
+- [ ] **Step 4: Reset and full smoke test**
+
+```bash
+node src/cli/index.js dashboard --reset
+```
+
+Expected: browser opens at http://localhost:3333, live price updates every 3s, Long/Short tabs work, pair selector switches TradingView symbol.
+
+- [ ] **Step 5: Final commit**
+
+```bash
+git add src/cli/index.js
+git commit -m "feat: wire dashboard CLI command — tv dashboard now live"
+```
