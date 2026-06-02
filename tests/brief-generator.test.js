@@ -8,6 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseRssEntry, filterByWindow, parseCaptionEvents } from '../src/bridge/youtube-fetcher.js';
+import { tsToSnowflake, filterMessages, extractImageUrls } from '../src/bridge/discord-fetcher.js';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -184,5 +185,101 @@ describe('Caption event parser', () => {
 
   it('returns empty array when events is undefined', () => {
     assert.deepEqual(parseCaptionEvents(undefined), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Discord fetcher helpers
+// ---------------------------------------------------------------------------
+
+describe('tsToSnowflake', () => {
+  it('returns "0" for the Discord epoch timestamp', () => {
+    assert.equal(tsToSnowflake(1420070400000), '0');
+  });
+
+  it('returns a larger snowflake for a later timestamp', () => {
+    const earlier = BigInt(tsToSnowflake(1420070400000));
+    const later   = BigInt(tsToSnowflake(1420070401000)); // 1 second later
+    assert.ok(later > earlier, 'later timestamp should produce a larger snowflake');
+  });
+});
+
+describe('filterMessages', () => {
+  const afterTs  = new Date('2024-06-01T08:00:00Z').getTime();
+  const beforeTs = new Date('2024-06-01T10:00:00Z').getTime();
+
+  const messages = [
+    { id: '1', timestamp: '2024-06-01T09:00:00.000Z' }, // inside window
+    { id: '2', timestamp: '2024-06-01T07:59:59.000Z' }, // before window
+    { id: '3', timestamp: '2024-06-01T10:00:00.000Z' }, // exactly at beforeTs — included
+    { id: '4', timestamp: '2024-06-01T10:00:01.000Z' }, // after window
+    { id: '5', timestamp: '2024-06-01T08:00:00.000Z' }, // exactly at afterTs — included
+  ];
+
+  it('keeps messages within the window and excludes those outside', () => {
+    const result = filterMessages(messages, afterTs, beforeTs);
+    const ids = result.map(m => m.id);
+    assert.ok(ids.includes('1'), 'message inside window should be included');
+    assert.ok(ids.includes('3'), 'message at beforeTs boundary should be included');
+    assert.ok(ids.includes('5'), 'message at afterTs boundary should be included');
+    assert.ok(!ids.includes('2'), 'message before window should be excluded');
+    assert.ok(!ids.includes('4'), 'message after window should be excluded');
+  });
+
+  it('returns empty array for empty input', () => {
+    assert.deepEqual(filterMessages([], afterTs, beforeTs), []);
+  });
+});
+
+describe('extractImageUrls', () => {
+  it('returns attachment URLs for image files (.png, .jpg)', () => {
+    const message = {
+      attachments: [
+        { filename: 'chart.png', url: 'https://cdn.discordapp.com/chart.png' },
+        { filename: 'setup.jpg', url: 'https://cdn.discordapp.com/setup.jpg' },
+      ],
+      embeds: [],
+    };
+    const urls = extractImageUrls(message);
+    assert.ok(urls.includes('https://cdn.discordapp.com/chart.png'));
+    assert.ok(urls.includes('https://cdn.discordapp.com/setup.jpg'));
+    assert.equal(urls.length, 2);
+  });
+
+  it('skips non-image attachments (.pdf, .txt)', () => {
+    const message = {
+      attachments: [
+        { filename: 'report.pdf', url: 'https://cdn.discordapp.com/report.pdf' },
+        { filename: 'notes.txt',  url: 'https://cdn.discordapp.com/notes.txt' },
+        { filename: 'image.webp', url: 'https://cdn.discordapp.com/image.webp' },
+      ],
+      embeds: [],
+    };
+    const urls = extractImageUrls(message);
+    assert.ok(!urls.includes('https://cdn.discordapp.com/report.pdf'), '.pdf should be skipped');
+    assert.ok(!urls.includes('https://cdn.discordapp.com/notes.txt'),  '.txt should be skipped');
+    assert.ok(urls.includes('https://cdn.discordapp.com/image.webp'),  '.webp should be included');
+    assert.equal(urls.length, 1);
+  });
+
+  it('returns embed image and thumbnail URLs', () => {
+    const message = {
+      attachments: [],
+      embeds: [
+        {
+          image:     { url: 'https://example.com/embed-image.png' },
+          thumbnail: { url: 'https://example.com/embed-thumb.jpg' },
+        },
+      ],
+    };
+    const urls = extractImageUrls(message);
+    assert.ok(urls.includes('https://example.com/embed-image.png'));
+    assert.ok(urls.includes('https://example.com/embed-thumb.jpg'));
+    assert.equal(urls.length, 2);
+  });
+
+  it('returns empty array when there are no attachments or embeds', () => {
+    const message = { attachments: [], embeds: [] };
+    assert.deepEqual(extractImageUrls(message), []);
   });
 });
