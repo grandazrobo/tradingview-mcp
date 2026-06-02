@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseRssEntry, filterByWindow, parseCaptionEvents } from '../src/bridge/youtube-fetcher.js';
 import { tsToSnowflake, filterMessages, extractImageUrls } from '../src/bridge/discord-fetcher.js';
+import { buildContentBlocks } from '../src/bridge/brief-synthesizer.js';
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -281,5 +282,99 @@ describe('extractImageUrls', () => {
   it('returns empty array when there are no attachments or embeds', () => {
     const message = { attachments: [], embeds: [] };
     assert.deepEqual(extractImageUrls(message), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Brief synthesizer — buildContentBlocks
+// ---------------------------------------------------------------------------
+
+describe('buildContentBlocks', () => {
+  it('with a transcript and no posts: returns at least 2 blocks, first is text with [0:00] timestamp', () => {
+    const transcript = [
+      { start: 0,  text: 'Welcome to the show' },
+      { start: 65, text: 'Today we look at BTC' },
+    ];
+    const blocks = buildContentBlocks({
+      videoId: 'abc123',
+      videoTitle: 'Chart Hackers Daily',
+      transcript,
+      posts: [],
+    });
+    assert.ok(blocks.length >= 2, 'should have at least 2 blocks');
+    assert.equal(blocks[0].type, 'text', 'first block should be text type');
+    assert.ok(blocks[0].text.includes('[0:00]'), 'first block should contain [0:00] timestamp');
+  });
+
+  it('with no transcript: still returns blocks (empty transcript section)', () => {
+    const blocks = buildContentBlocks({
+      videoId: 'xyz',
+      videoTitle: 'Empty Show',
+      transcript: [],
+      posts: [],
+    });
+    assert.ok(blocks.length >= 1, 'should still return at least one block');
+    assert.equal(blocks[0].type, 'text');
+  });
+
+  it('with posts that have images: includes image blocks with type "image" and source.type "base64"', () => {
+    const posts = [
+      {
+        author: 'Dylan',
+        timestamp: '2026-06-01T08:00:00Z',
+        content: 'BTC chart setup',
+        images: [
+          { base64: 'iVBORw0KGgo=', mediaType: 'image/png' },
+        ],
+      },
+    ];
+    const blocks = buildContentBlocks({
+      videoId: 'v1',
+      videoTitle: 'Test Show',
+      transcript: [],
+      posts,
+    });
+    const imageBlocks = blocks.filter(b => b.type === 'image');
+    assert.ok(imageBlocks.length > 0, 'should have at least one image block');
+    assert.equal(imageBlocks[0].source.type, 'base64');
+    assert.equal(imageBlocks[0].source.media_type, 'image/png');
+    assert.equal(imageBlocks[0].source.data, 'iVBORw0KGgo=');
+  });
+
+  it('with posts that have no images: no image blocks in output', () => {
+    const posts = [
+      {
+        author: 'Dylan',
+        timestamp: '2026-06-01T08:00:00Z',
+        content: 'Text-only post',
+        images: [],
+      },
+    ];
+    const blocks = buildContentBlocks({
+      videoId: 'v2',
+      videoTitle: 'Test Show',
+      transcript: [],
+      posts,
+    });
+    const imageBlocks = blocks.filter(b => b.type === 'image');
+    assert.equal(imageBlocks.length, 0, 'should have no image blocks');
+  });
+
+  it('formatTime behaviour: 0s → "0:00", 65s → "1:05", 3661s → "61:01" — verified via transcript block content', () => {
+    const transcript = [
+      { start: 0,    text: 'zero seconds' },
+      { start: 65,   text: 'sixty five seconds' },
+      { start: 3661, text: 'three thousand six sixty one seconds' },
+    ];
+    const blocks = buildContentBlocks({
+      videoId: 'time-test',
+      videoTitle: 'Timing Test',
+      transcript,
+      posts: [],
+    });
+    const transcriptText = blocks[0].text;
+    assert.ok(transcriptText.includes('[0:00]'),  'should format 0 seconds as [0:00]');
+    assert.ok(transcriptText.includes('[1:05]'),  'should format 65 seconds as [1:05]');
+    assert.ok(transcriptText.includes('[61:01]'), 'should format 3661 seconds as [61:01]');
   });
 });
