@@ -1,30 +1,32 @@
 import { register } from '../router.js';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { dirname } from 'path';
 import { execFileSync } from 'child_process';
 import { briefPath, todayNZT } from '../../bridge/brief-parser.js';
 import { findLatestVideo, fetchTranscript } from '../../bridge/youtube-fetcher.js';
 import { fetchShowPosts } from '../../bridge/discord-fetcher.js';
 import { synthesizeBrief } from '../../bridge/brief-synthesizer.js';
 
-const YT_CHANNEL_ID = process.env.CHART_HACKERS_YT_CHANNEL_ID;
-const DISCORD_CHANNEL = process.env.DISCORD_CHANNEL_LIVE_SHOW_CHARTS;
 const SHOW_WINDOW_HOURS = 6;
 
 async function fetchData(opts) {
+  const ytChannelId = process.env.CHART_HACKERS_YT_CHANNEL_ID;
+  const discordChannel = process.env.DISCORD_CHANNEL_LIVE_SHOW_CHARTS;
+
   // Step 1: Find YouTube video
   let video;
   if (opts['video-id']) {
     video = {
       videoId: opts['video-id'],
       title: `(manual: ${opts['video-id']})`,
-      publishedAt: new Date(),
+      publishedAt: opts['published-at'] ? new Date(opts['published-at']) : new Date(),
     };
   } else {
-    if (!YT_CHANNEL_ID) {
+    if (!ytChannelId) {
       throw new Error('CHART_HACKERS_YT_CHANNEL_ID not set — use --video-id to skip auto-detect');
     }
     console.error('  Searching YouTube channel for latest video...');
-    video = await findLatestVideo(YT_CHANNEL_ID, 36);
+    video = await findLatestVideo(ytChannelId, 36);
     if (!video) {
       throw new Error('No video found in the last 36 hours — try again later or use --video-id');
     }
@@ -44,12 +46,12 @@ async function fetchData(opts) {
 
   // Step 3: Fetch Discord posts
   let posts = [];
-  if (DISCORD_CHANNEL) {
+  if (discordChannel) {
     const windowStart = video.publishedAt.getTime() - SHOW_WINDOW_HOURS * 3600 * 1000;
     const windowEnd   = video.publishedAt.getTime() + SHOW_WINDOW_HOURS * 3600 * 1000;
     try {
-      console.error(`  Fetching Discord posts from channel ${DISCORD_CHANNEL}...`);
-      posts = await fetchShowPosts(DISCORD_CHANNEL, windowStart, windowEnd);
+      console.error(`  Fetching Discord posts from channel ${discordChannel}...`);
+      posts = await fetchShowPosts(discordChannel, windowStart, windowEnd);
       console.error(`  Discord: ${posts.length} post(s) in window`);
     } catch (err) {
       console.error(`  Warning: Discord fetch failed — ${err.message}`);
@@ -68,6 +70,7 @@ async function handleFetch(opts) {
   return {
     success: true,
     mode: 'fetch-only',
+    date: opts.date ?? todayNZT(),
     video: {
       videoId: video.videoId,
       title: video.title,
@@ -120,6 +123,7 @@ async function handleGenerate(opts) {
     posts,
   });
 
+  mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, briefText);
   console.error(`  Brief written: ${outPath}`);
 
@@ -132,6 +136,14 @@ async function handleGenerate(opts) {
       });
     } catch (err) {
       console.error(`  Warning: load-brief failed — ${err.message}`);
+      return {
+        success: true,
+        date,
+        path: outPath,
+        transcript_segments: transcript.length,
+        discord_posts: posts.length,
+        execute_error: err.message,
+      };
     }
   }
 
@@ -150,10 +162,11 @@ register('brief', {
     ['generate', {
       description: 'Full pipeline: fetch transcript + Discord posts, synthesize brief via Claude',
       options: {
-        date:       { type: 'string',  description: 'Date to generate for (YYYY-MM-DD, default: today NZT)' },
-        'video-id': { type: 'string',  description: 'Skip auto-detect and use this YouTube video ID directly' },
-        execute:    { type: 'boolean', description: 'After writing brief, run tv load-brief --execute --force' },
-        force:      { type: 'boolean', description: 'Overwrite existing brief file' },
+        date:           { type: 'string',  description: 'Date to generate for (YYYY-MM-DD, default: today NZT)' },
+        'video-id':     { type: 'string',  description: 'Skip auto-detect and use this YouTube video ID directly' },
+        'published-at': { type: 'string',  description: 'ISO timestamp for Discord window when using --video-id (default: now)' },
+        execute:        { type: 'boolean', description: 'After writing brief, run tv load-brief --execute --force' },
+        force:          { type: 'boolean', description: 'Overwrite existing brief file' },
       },
       handler: handleGenerate,
     }],
