@@ -18,6 +18,66 @@ function htmlDecode(str) {
 }
 
 /**
+ * Parse a single RSS <entry> block and return { videoId, title, publishedAt }
+ * or null if required fields are missing or date is invalid.
+ * @param {string} entryXml
+ * @returns {{videoId: string, title: string, publishedAt: Date}|null}
+ */
+export function parseRssEntry(entryXml) {
+  const videoIdMatch = entryXml.match(/<yt:videoId>([^<]+)<\/yt:videoId>/);
+  if (!videoIdMatch) return null;
+  const videoId = videoIdMatch[1].trim();
+
+  const titleMatch = entryXml.match(/<title>([^<]*)<\/title>/);
+  if (!titleMatch) return null;
+  const title = htmlDecode(titleMatch[1].trim());
+
+  const pubMatch = entryXml.match(/<published>([^<]+)<\/published>/);
+  if (!pubMatch) return null;
+  const publishedAt = new Date(pubMatch[1].trim());
+  if (isNaN(publishedAt.getTime())) return null;
+
+  return { videoId, title, publishedAt };
+}
+
+/**
+ * Filter a list of parsed entries to those within the given time window.
+ * @param {Array<{videoId: string, title: string, publishedAt: Date}>} entries
+ * @param {number} windowHours
+ * @param {Date} [now] - injectable "now" for testing
+ * @returns {Array<{videoId: string, title: string, publishedAt: Date}>}
+ */
+export function filterByWindow(entries, windowHours, now = new Date()) {
+  const cutoff = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
+  return entries.filter(e => e.publishedAt >= cutoff);
+}
+
+/**
+ * Convert ytInitialPlayerResponse caption events into transcript segments.
+ * @param {Array} events - captionJson.events
+ * @returns {Array<{start: number, text: string}>}
+ */
+export function parseCaptionEvents(events) {
+  const segments = [];
+  for (const event of (events ?? [])) {
+    if (!event.segs || event.segs.length === 0) continue;
+
+    const text = event.segs
+      .map(seg => (seg.utf8 ?? '').replace(/\n/g, ' '))
+      .join('')
+      .trim();
+
+    if (!text) continue;
+
+    segments.push({
+      start: (event.tStartMs ?? 0) / 1000,
+      text,
+    });
+  }
+  return segments;
+}
+
+/**
  * Find the most recent video published within the given time window.
  *
  * @param {string} channelId - YouTube channel ID (e.g. "UCxxxxxx")
@@ -32,39 +92,21 @@ export async function findLatestVideo(channelId, windowHours = 36) {
   }
   const xml = await res.text();
 
-  const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
-
-  // Find all <entry> blocks
+  // Find all <entry> blocks and parse them
   const entryRe = /<entry>([\s\S]*?)<\/entry>/g;
-  let best = null;
+  const entries = [];
 
   let match;
   while ((match = entryRe.exec(xml)) !== null) {
-    const entry = match[1];
-
-    // Extract videoId — <yt:videoId>...</yt:videoId>
-    const videoIdMatch = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/);
-    if (!videoIdMatch) continue;
-    const videoId = videoIdMatch[1].trim();
-
-    // Extract title — <title>...</title>
-    const titleMatch = entry.match(/<title>([^<]*)<\/title>/);
-    if (!titleMatch) continue;
-    const title = htmlDecode(titleMatch[1].trim());
-
-    // Extract published — <published>...</published>
-    const pubMatch = entry.match(/<published>([^<]+)<\/published>/);
-    if (!pubMatch) continue;
-    const publishedAt = new Date(pubMatch[1].trim());
-
-    if (publishedAt < cutoff) continue;
-
-    if (!best || publishedAt > best.publishedAt) {
-      best = { videoId, title, publishedAt };
-    }
+    const parsed = parseRssEntry(match[1]);
+    if (parsed) entries.push(parsed);
   }
 
-  return best;
+  // Filter to the time window and pick the most recent
+  const recent = filterByWindow(entries, windowHours);
+  if (recent.length === 0) return null;
+
+  return recent.reduce((best, e) => (!best || e.publishedAt > best.publishedAt ? e : best), null);
 }
 
 /**
@@ -120,6 +162,7 @@ export async function fetchTranscript(videoId) {
     captionTracks.find(t => t.languageCode === 'en') ??
     captionTracks[0];
 
+  if (!track.baseUrl) throw new Error(`Caption track for ${videoId} has no baseUrl — malformed player response`);
   const captionUrl = track.baseUrl + '&fmt=json3';
 
   const captionRes = await fetch(captionUrl, {

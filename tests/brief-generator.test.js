@@ -7,74 +7,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-
-// ---------------------------------------------------------------------------
-// Inline helpers that mirror the logic in youtube-fetcher.js so we can test
-// them in isolation without making any network calls.
-// ---------------------------------------------------------------------------
-
-function htmlDecode(str) {
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
-
-/**
- * Parse a single RSS <entry> block and return { videoId, title, publishedAt }
- * or null if required fields are missing.
- */
-function parseRssEntry(entryXml) {
-  const videoIdMatch = entryXml.match(/<yt:videoId>([^<]+)<\/yt:videoId>/);
-  if (!videoIdMatch) return null;
-  const videoId = videoIdMatch[1].trim();
-
-  const titleMatch = entryXml.match(/<title>([^<]*)<\/title>/);
-  if (!titleMatch) return null;
-  const title = htmlDecode(titleMatch[1].trim());
-
-  const pubMatch = entryXml.match(/<published>([^<]+)<\/published>/);
-  if (!pubMatch) return null;
-  const publishedAt = new Date(pubMatch[1].trim());
-
-  return { videoId, title, publishedAt };
-}
-
-/**
- * Filter a list of parsed entries to those within the given window.
- * @param {Array<{videoId, title, publishedAt}>} entries
- * @param {number} windowHours
- * @param {Date} [now] - injectable "now" for testing
- */
-function filterByWindow(entries, windowHours, now = new Date()) {
-  const cutoff = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
-  return entries.filter(e => e.publishedAt >= cutoff);
-}
-
-/**
- * Convert ytInitialPlayerResponse caption events into transcript segments.
- * @param {Array} events - captionJson.events
- * @returns {Array<{start: number, text: string}>}
- */
-function parseCaptionEvents(events) {
-  const segments = [];
-  for (const event of (events ?? [])) {
-    if (!event.segs || event.segs.length === 0) continue;
-
-    const text = event.segs
-      .map(seg => (seg.utf8 ?? '').replace(/\n/g, ' '))
-      .join('')
-      .trim();
-
-    if (!text) continue;
-
-    segments.push({
-      start: (event.tStartMs ?? 0) / 1000,
-      text,
-    });
-  }
-  return segments;
-}
+import { parseRssEntry, filterByWindow, parseCaptionEvents } from '../src/bridge/youtube-fetcher.js';
 
 // ---------------------------------------------------------------------------
 // Tests
