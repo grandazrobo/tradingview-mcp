@@ -11,7 +11,7 @@ const SYSTEM_PROMPT = `You are synthesizing a daily trading brief for an AI-assi
 
 ## Your output format
 
-Write a markdown document starting with YAML frontmatter, then trade cards using this EXACT table format:
+Write a markdown document starting with YAML frontmatter. The `date:` field in the frontmatter MUST be the brief date provided in the user message — do NOT infer it from video content or titles. Then trade cards using this EXACT table format:
 
 ## #N — SYMBOL direction — HOST call description (CONVICTION conviction)
 
@@ -123,7 +123,13 @@ export function buildContentBlocks({ videoId, videoTitle, transcript, posts }) {
 export async function synthesizeBrief({ date, showDate, videoId, videoTitle, transcript, posts }) {
   const client = new Anthropic();
 
-  const contentBlocks = buildContentBlocks({ videoId, videoTitle, transcript, posts });
+  const contentBlocks = [
+    {
+      type: 'text',
+      text: `Brief date: ${date}\nShow date: ${showDate}\n\nUse "${date}" as the date field in the YAML frontmatter.`,
+    },
+    ...buildContentBlocks({ videoId, videoTitle, transcript, posts }),
+  ];
 
   const response = await client.messages.create({
     model: 'claude-opus-4-7',
