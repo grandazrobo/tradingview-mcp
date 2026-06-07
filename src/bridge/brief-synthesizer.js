@@ -11,7 +11,7 @@ const SYSTEM_PROMPT = `You are synthesizing a daily trading brief for an AI-assi
 
 ## Your output format
 
-Write a markdown document starting with YAML frontmatter. The `date:` field in the frontmatter MUST be the brief date provided in the user message — do NOT infer it from video content or titles. Then trade cards using this EXACT table format:
+Write a markdown document starting with YAML frontmatter. The date: field in the frontmatter MUST be the brief date provided in the user message — do NOT infer it from video content or titles. Then trade cards using this EXACT table format:
 
 ## #N — SYMBOL direction — HOST call description (CONVICTION conviction)
 

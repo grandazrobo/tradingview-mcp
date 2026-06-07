@@ -97,13 +97,15 @@ async function downloadImageAsBase64(url) {
  * @returns {Promise<Array<{id, author, content, timestamp, images}>>}
  */
 export async function fetchShowPosts(channelId, afterTs, beforeTs) {
-  const token = process.env.DISCORD_BOT_TOKEN;
-  if (!token) throw new Error('DISCORD_BOT_TOKEN not set');
+  const botToken  = process.env.DISCORD_BOT_TOKEN;
+  const userToken = process.env.DISCORD_USER_TOKEN;
+  if (!botToken && !userToken) throw new Error('Neither DISCORD_BOT_TOKEN nor DISCORD_USER_TOKEN is set');
   if (!channelId) throw new Error('channelId required — set DISCORD_CHANNEL_LIVE_SHOW_CHARTS');
 
-  const headers = {
-    Authorization: `Bot ${token}`,
-  };
+  // User token takes priority (works on channels where bot lacks access)
+  const headers = userToken
+    ? { Authorization: userToken }
+    : { Authorization: `Bot ${botToken}` };
 
   const collected = [];
   let beforeSnowflake = tsToSnowflake(beforeTs + 1); // start just after the window end
