@@ -107,11 +107,22 @@ export async function findLatestVideo(channelId, windowHours = 36) {
     if (parsed) entries.push(parsed);
   }
 
-  // Filter to the time window and pick the most recent
+  // Filter to the time window
   const recent = filterByWindow(entries, windowHours);
   if (recent.length === 0) return null;
 
-  return recent.reduce((best, e) => (!best || e.publishedAt > best.publishedAt ? e : best), null);
+  // Prefer main show videos over short urgent-update posts.
+  // Short-format posts (🚨, "URGENT", "PRE MARKET") are deprioritised;
+  // among equally-scored candidates the most recent wins.
+  const URGENT_RE = /urgent|pre\s*market|🚨/i;
+  const scored = recent.map(e => ({
+    entry: e,
+    score: URGENT_RE.test(e.title) ? 0 : 1,
+  }));
+  scored.sort((a, b) =>
+    b.score - a.score || b.entry.publishedAt - a.entry.publishedAt
+  );
+  return scored[0].entry;
 }
 
 /**
