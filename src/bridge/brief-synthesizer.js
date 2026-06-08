@@ -46,6 +46,15 @@ Then trade cards using this EXACT table format:
 | Suggested leverage | Nx isolated | |
 | ATP fit | ✅ or ⚠️ description | |
 
+## Host names
+
+Use these names consistently — do not use abbreviations or aliases:
+- "DJ" or "DylanJ" in the transcript = **Dylan** (main Chart Hackers host)
+- "xnimrod" or "TheLordOfEntry" = **xnimrod**
+- "Nagel" = **Nagel**
+- "Panda" or "ArabianPanda" = **Panda**
+- "Chaos" = **Chaos**
+
 ## Critical parser rules (MUST follow)
 
 1. Entry and stop MUST be different numbers. If a host says "buy at 70K, stop below 70K" — set entry at the top of the zone (e.g. 70,200) and stop at a concrete level below (e.g. 69,500). Never equal.
