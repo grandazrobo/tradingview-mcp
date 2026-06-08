@@ -20,6 +20,7 @@ Write a markdown document starting with YAML frontmatter exactly like this:
 \`\`\`yaml
 ---
 date: YYYY-MM-DD          # brief date from user message — do NOT change
+generated: "YYYY-MM-DD HH:MM:SS TZ"   # from generated_at in user message — do NOT change
 show: Chart Hackers
 episode_title: "exact YouTube video title"
 hosts: "host name(s) identified from transcript"
@@ -77,6 +78,7 @@ Then write a feed document with this YAML frontmatter:
 tags: [feed, chart-hackers, atp, daily]
 source: youtube
 date: YYYY-MM-DD          # same brief date
+generated: "YYYY-MM-DD HH:MM:SS TZ"   # from generated_at in user message — do NOT change
 video_id: xxxxxxxxxxx
 video_url: https://www.youtube.com/watch?v=xxxxxxxxxxx
 channel: Chart Hackers
@@ -181,6 +183,7 @@ export function buildContentBlocks({ videoId, videoTitle, transcript, posts }) {
  * @param {object} opts
  * @param {string} opts.date              NZT date string e.g. "2026-06-09"
  * @param {string} opts.showDatetime      UTC datetime of video publish e.g. "2026-06-08 18:42:36 UTC"
+ * @param {string} opts.generatedAt       NZT datetime of brief generation e.g. "2026-06-09 08:15:30 NZST"
  * @param {string} opts.videoId
  * @param {string} opts.videoTitle
  * @param {number} opts.transcriptCount   Number of transcript segments
@@ -189,7 +192,7 @@ export function buildContentBlocks({ videoId, videoTitle, transcript, posts }) {
  * @param {Array}  opts.posts
  * @returns {Promise<{briefText: string, feedText: string}>}
  */
-export async function synthesizeBrief({ date, showDatetime, videoId, videoTitle, transcriptCount, durationSecs, transcript, posts }) {
+export async function synthesizeBrief({ date, showDatetime, generatedAt, videoId, videoTitle, transcriptCount, durationSecs, transcript, posts }) {
   const client = new Anthropic();
 
   const duration = formatDuration(durationSecs ?? 0);
@@ -199,12 +202,13 @@ export async function synthesizeBrief({ date, showDatetime, videoId, videoTitle,
       type: 'text',
       text: [
         `Brief date: ${date}`,
+        `Generated at: ${generatedAt}`,
         `Show published: ${showDatetime}`,
         `Video ID: ${videoId}`,
         `Transcript segments: ${transcriptCount}`,
         `Approx duration: ${duration}`,
         '',
-        `Use "${date}" as the date field and "${showDatetime}" as show_published in both documents.`,
+        `Use "${date}" as the date field, "${generatedAt}" as the generated field, and "${showDatetime}" as show_published in both documents.`,
       ].join('\n'),
     },
     ...buildContentBlocks({ videoId, videoTitle, transcript, posts }),

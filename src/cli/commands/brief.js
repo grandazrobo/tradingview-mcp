@@ -113,11 +113,24 @@ async function handleGenerate(opts) {
 
   const showDatetime = video.publishedAt.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
   const durationSecs = transcript.length > 0 ? Math.ceil(transcript[transcript.length - 1].start) : 0;
+  const generatedAt = (() => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Pacific/Auckland',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false, timeZoneName: 'long',
+    }).formatToParts(now);
+    const get = t => parts.find(p => p.type === t)?.value;
+    const tzName = get('timeZoneName')?.includes('Daylight') ? 'NZDT' : 'NZST';
+    return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')} ${tzName}`;
+  })();
 
   console.error('  Calling Claude API to synthesize brief...');
   const { briefText, feedText } = await synthesizeBrief({
     date,
     showDatetime,
+    generatedAt,
     videoId: video.videoId,
     videoTitle: video.title,
     transcriptCount: transcript.length,
