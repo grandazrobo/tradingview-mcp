@@ -2,7 +2,7 @@ import { register } from '../router.js';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { execFileSync } from 'child_process';
-import { briefPath, todayNZT } from '../../bridge/brief-parser.js';
+import { briefPath, feedPath, todayNZT } from '../../bridge/brief-parser.js';
 import { findLatestVideo, fetchTranscript } from '../../bridge/youtube-fetcher.js';
 import { fetchShowPosts } from '../../bridge/discord-fetcher.js';
 import { synthesizeBrief } from '../../bridge/brief-synthesizer.js';
@@ -112,13 +112,16 @@ async function handleGenerate(opts) {
   }
 
   const showDatetime = video.publishedAt.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+  const durationSecs = transcript.length > 0 ? Math.ceil(transcript[transcript.length - 1].start) : 0;
 
   console.error('  Calling Claude API to synthesize brief...');
-  const briefText = await synthesizeBrief({
+  const { briefText, feedText } = await synthesizeBrief({
     date,
     showDatetime,
     videoId: video.videoId,
     videoTitle: video.title,
+    transcriptCount: transcript.length,
+    durationSecs,
     transcript,
     posts,
   });
@@ -126,6 +129,13 @@ async function handleGenerate(opts) {
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, briefText);
   console.error(`  Brief written: ${outPath}`);
+
+  if (feedText) {
+    const fPath = feedPath(date);
+    mkdirSync(dirname(fPath), { recursive: true });
+    writeFileSync(fPath, feedText);
+    console.error(`  Feed written:  ${fPath}`);
+  }
 
   // Optionally run load-brief
   if (opts.execute) {

@@ -7,6 +7,11 @@ export const BRIEFS_DIR = join(
   'ai-trading-platform', 'briefs'
 );
 
+export const FEEDS_DIR = join(
+  homedir(), 'Documents', 'Ai Brain', '05_Memory',
+  'ai-trading-platform', 'feeds', 'chart-hackers'
+);
+
 export function todayNZT() {
   const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Pacific/Auckland' }));
   return [
@@ -18,6 +23,10 @@ export function todayNZT() {
 
 export function briefPath(date) {
   return join(BRIEFS_DIR, `${date}_chart-hackers-synthesis.md`);
+}
+
+export function feedPath(date) {
+  return join(FEEDS_DIR, `${date}.md`);
 }
 
 // Extract the first numeric value from a markdown string (strips bold, commas, $ prefix)
