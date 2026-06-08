@@ -2,8 +2,13 @@
  * Discord channel fetcher for the brief generator.
  * Reads messages from a Discord channel within a time window and downloads image attachments.
  *
- * No new npm dependencies — uses native fetch (Node 18+).
+ * No new npm dependencies — uses native fetch (Node 18+) and macOS sips for image resizing.
  */
+
+import { execFileSync } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const BASE = 'https://discord.com/api/v10';
 const DISCORD_EPOCH = 1420070400000n;
@@ -73,13 +78,33 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const MAX_IMAGE_PX = 1999; // Claude many-image API limit is 2000px per dimension
+
 async function downloadImageAsBase64(url) {
   const res = await fetch(url);
   if (!res.ok) return null;
   const contentType = res.headers.get('content-type') ?? 'image/png';
   const mediaType = contentType.split(';')[0].trim();
   const arrayBuffer = await res.arrayBuffer();
-  const base64 = Buffer.from(arrayBuffer).toString('base64');
+  let buf = Buffer.from(arrayBuffer);
+
+  // Resize via sips (macOS built-in) if image may exceed Claude's per-dimension limit
+  try {
+    const ext = mediaType === 'image/jpeg' ? '.jpg' : mediaType === 'image/gif' ? '.gif' : '.png';
+    const tmpDir = mkdtempSync(join(tmpdir(), 'discord-img-'));
+    const tmpFile = join(tmpDir, `img${ext}`);
+    try {
+      writeFileSync(tmpFile, buf);
+      execFileSync('sips', ['-Z', String(MAX_IMAGE_PX), tmpFile], { stdio: 'pipe' });
+      buf = readFileSync(tmpFile);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  } catch {
+    // sips unavailable or failed — send original
+  }
+
+  const base64 = buf.toString('base64');
   return { url, base64, mediaType };
 }
 
