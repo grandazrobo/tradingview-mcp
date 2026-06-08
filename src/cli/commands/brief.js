@@ -35,11 +35,13 @@ async function fetchData(opts) {
 
   // Step 2: Fetch transcript
   let transcript = [];
+  let transcriptError = null;
   try {
     console.error(`  Fetching transcript for ${video.videoId}...`);
     transcript = await fetchTranscript(video.videoId);
     console.error(`  Transcript: ${transcript.length} segments`);
   } catch (err) {
+    transcriptError = err.message;
     console.error(`  Warning: transcript unavailable — ${err.message}`);
     transcript = [];
   }
@@ -61,7 +63,7 @@ async function fetchData(opts) {
     console.error('  Warning: DISCORD_CHANNEL_LIVE_SHOW_CHARTS not set — skipping Discord');
   }
 
-  return { video, transcript, posts };
+  return { video, transcript, posts, transcriptError };
 }
 
 async function handleFetch(opts) {
@@ -100,14 +102,25 @@ async function handleGenerate(opts) {
     };
   }
 
-  const { video, transcript, posts } = await fetchData(opts);
+  const { video, transcript, posts, transcriptError } = await fetchData(opts);
 
-  // Must have some data
+  // Transcript fetch failed — signal retry so the watcher will try again later
+  if (transcriptError && transcript.length === 0) {
+    return {
+      success: false,
+      date,
+      error: `Transcript not yet available — ${transcriptError}`,
+      retry: true,
+    };
+  }
+
+  // No data at all (transcript + Discord both empty)
   if (transcript.length === 0 && posts.length === 0) {
     return {
       success: false,
       date,
       error: 'No data available — try again later',
+      retry: true,
     };
   }
 
