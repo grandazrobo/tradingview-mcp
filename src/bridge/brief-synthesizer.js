@@ -11,7 +11,21 @@ const SYSTEM_PROMPT = `You are synthesizing a daily trading brief for an AI-assi
 
 ## Your output format
 
-Write a markdown document starting with YAML frontmatter. The date: field in the frontmatter MUST be the brief date provided in the user message — do NOT infer it from video content or titles. Then trade cards using this EXACT table format:
+Write a markdown document starting with YAML frontmatter exactly like this:
+
+\`\`\`yaml
+---
+date: YYYY-MM-DD          # brief date from user message — do NOT change
+show: Chart Hackers
+episode_title: "exact YouTube video title"
+hosts: "host name(s) identified from transcript"
+video_id: xxxxxxxxxxx
+show_published: "YYYY-MM-DD HH:MM UTC"   # from show_published in user message
+tone: one-line macro bias description
+---
+\`\`\`
+
+Then trade cards using this EXACT table format:
 
 ## #N — SYMBOL direction — HOST call description (CONVICTION conviction)
 
@@ -112,21 +126,21 @@ export function buildContentBlocks({ videoId, videoTitle, transcript, posts }) {
  * Call Claude API to synthesize a daily trading brief.
  *
  * @param {object} opts
- * @param {string} opts.date          ISO date string e.g. "2026-06-01"
- * @param {string} opts.showDate      Human-readable date for the brief header
+ * @param {string} opts.date          NZT date string e.g. "2026-06-09"
+ * @param {string} opts.showDatetime  UTC datetime of video publish e.g. "2026-06-08 18:42:36 UTC"
  * @param {string} opts.videoId
  * @param {string} opts.videoTitle
  * @param {Array}  opts.transcript
  * @param {Array}  opts.posts
  * @returns {Promise<string>} Markdown brief text
  */
-export async function synthesizeBrief({ date, showDate, videoId, videoTitle, transcript, posts }) {
+export async function synthesizeBrief({ date, showDatetime, videoId, videoTitle, transcript, posts }) {
   const client = new Anthropic();
 
   const contentBlocks = [
     {
       type: 'text',
-      text: `Brief date: ${date}\nShow date: ${showDate}\n\nUse "${date}" as the date field in the YAML frontmatter.`,
+      text: `Brief date: ${date}\nShow published: ${showDatetime}\n\nUse "${date}" as the date field and "${showDatetime}" as the show_published field in the YAML frontmatter.`,
     },
     ...buildContentBlocks({ videoId, videoTitle, transcript, posts }),
   ];

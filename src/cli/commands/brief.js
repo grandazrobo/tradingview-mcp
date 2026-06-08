@@ -111,12 +111,12 @@ async function handleGenerate(opts) {
     };
   }
 
-  const showDate = video.publishedAt.toISOString().slice(0, 10);
+  const showDatetime = video.publishedAt.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
 
   console.error('  Calling Claude API to synthesize brief...');
   const briefText = await synthesizeBrief({
     date,
-    showDate,
+    showDatetime,
     videoId: video.videoId,
     videoTitle: video.title,
     transcript,
