@@ -135,6 +135,7 @@ export function queueTrade(state, params) {
     invalidation_price, invalidation_direction,
     stop_price, tp1_price, tp1_split, tp2_price, tp2_split,
     margin_usd, leverage, conviction = null, source = null, card_title = null,
+    queue_side = null,
   } = params;
   const queued = {
     id: randomUUID(),
@@ -144,6 +145,7 @@ export function queueTrade(state, params) {
     entry_condition,
     invalidation_price,
     invalidation_direction,
+    queue_side,
     stop_price,
     tp1_price,
     tp1_split: tp1_split ?? 30,

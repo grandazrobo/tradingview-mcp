@@ -342,9 +342,15 @@ async function handler(opts, positionals) {
     }
     try {
       const result = await postQueuedTrade(card);
-      if (result.success) {
+      if (result.success && result.action === 'immediate_load') {
+        loaded.push({ card_title: card.card_title, symbol: card.symbol, trade_id: result.trade?.id });
+        openPositions.add(`${baseOf(card.symbol)}:${card.direction}`);
+        console.error(`  ✓ ${card.card_title} — loaded at market (pullback already ran, zone ${card.entry_zone} → market ${result.trade?.entry_price})`);
+      } else if (result.success) {
         queued_loaded.push({ card_title: card.card_title, symbol: card.symbol, queued_id: result.queued?.id });
         console.error(`  ⏳ ${card.card_title} — queued (${card.symbol} ${card.direction} @ ${card.entry_zone})`);
+      } else if (result.action === 'invalidated') {
+        console.error(`  ✗ ${card.card_title} — invalidated at load time: ${result.reason}`);
       } else {
         queue_errors.push({ card_title: card.card_title, error: result.error });
         console.error(`  ✗ ${card.card_title} — queue error: ${result.error}`);

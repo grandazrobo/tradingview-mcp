@@ -65,9 +65,13 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     } catch { /* TV may be loading */ }
   }
 
-  // Binance REST poll — fetches prices for every open trade symbol simultaneously
+  // Binance REST poll — fetches prices for every open + queued trade symbol simultaneously
   async function pollAllPrices() {
-    const bases = [...new Set(state.open_trades.map(t => baseOf(t.symbol)))];
+    const allSymbols = [
+      ...state.open_trades.map(t => t.symbol),
+      ...(state.queued_trades ?? []).filter(q => q.status === 'monitoring').map(q => q.symbol),
+    ];
+    const bases = [...new Set(allSymbols.map(baseOf))];
     if (bases.length === 0) return;
     const symbols = bases.map(b => b + 'USDT');
     try {
@@ -151,9 +155,18 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
         continue;
       }
 
-      // Entry zone check — within 0.5% of entry_zone → auto-load
+      // Entry zone check — directional auto-load.
+      // LONG pullback (queue_side='above'): price must arrive from above — only load if
+      //   price is AT or above the zone (not already blown through below it).
+      // SHORT retest (queue_side='below'): price must arrive from below — only load if
+      //   price is AT or below the zone.
+      // Default queue_side if not set: 'above' for longs, 'below' for shorts.
+      const side = q.queue_side ?? (q.direction === 'long' ? 'above' : 'below');
+      const approachingCorrectly = side === 'above'
+        ? price >= q.entry_zone * 0.995   // long pullback: price must be at or above zone
+        : price <= q.entry_zone * 1.005;  // short retest: price must be at or below zone
       const distPct = Math.abs((price - q.entry_zone) / q.entry_zone) * 100;
-      if (distPct <= 0.5) {
+      if (distPct <= 0.5 && approachingCorrectly) {
         const trade = activateQueued(state, q.id, q.entry_zone);
         if (trade) {
           notifyTradeOpen(trade);
@@ -288,17 +301,54 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     if (!state.queued_trades) state.queued_trades = [];
+    const zone = Number(entry_zone);
+    const invalPrice = invalidation_price ? Number(invalidation_price) : null;
+    const currentPrice = priceMap[baseOf(symbol)] ?? null;
+    const isLong = direction === 'long';
+
+    if (currentPrice) {
+      // Check invalidation first — if already breached, don't queue
+      const alreadyInvalidated = invalPrice && (
+        (invalDir => invalDir === 'below' ? currentPrice < invalPrice : currentPrice > invalPrice)(invalidation_direction)
+      );
+      if (alreadyInvalidated) {
+        return res.json({ success: false, action: 'invalidated',
+          reason: `Price ${currentPrice} already breached invalidation (${invalidation_direction} ${invalPrice})` });
+      }
+
+      // Check if price has already passed through the entry zone while the show was running.
+      // LONG pullback: if price is already below zone → pullback played out, load at market.
+      // SHORT retest: if price is already above zone → retest played out, load at market.
+      const pastZone = isLong ? currentPrice < zone : currentPrice > zone;
+      if (pastZone) {
+        const trade = openTrade(state, {
+          symbol, direction, entry_price: currentPrice,
+          stop_price: Number(stop_price),
+          tp1_price: Number(tp1_price), tp1_split: Number(tp1_split ?? 30),
+          tp2_price: Number(tp2_price), tp2_split: Number(tp2_split ?? 70),
+          margin_usd: Number(margin_usd), leverage: Number(leverage),
+          conviction, source, card_title,
+        });
+        notifyTradeOpen(trade);
+        console.error(`  [Queue→Active] ${symbol} — already past zone ${zone}, loaded at market ${currentPrice}`);
+        return res.json({ success: true, action: 'immediate_load', trade });
+      }
+    }
+
+    // Normal case: price hasn't reached the zone yet — queue and monitor
+    const queue_side = currentPrice
+      ? (currentPrice >= zone ? 'above' : 'below')
+      : (isLong ? 'above' : 'below');
     const queued = queueTrade(state, {
-      symbol, direction, entry_zone: Number(entry_zone), entry_condition,
-      invalidation_price: invalidation_price ? Number(invalidation_price) : null,
-      invalidation_direction,
+      symbol, direction, entry_zone: zone, entry_condition,
+      invalidation_price: invalPrice, invalidation_direction,
       stop_price: Number(stop_price),
       tp1_price: Number(tp1_price), tp1_split: Number(tp1_split ?? 30),
       tp2_price: Number(tp2_price), tp2_split: Number(tp2_split ?? 70),
       margin_usd: Number(margin_usd), leverage: Number(leverage),
-      conviction, source, card_title,
+      conviction, source, card_title, queue_side,
     });
-    res.json({ success: true, queued });
+    res.json({ success: true, action: 'queued', queued });
   });
 
   app.post('/api/queue/load/:id', (req, res) => {
