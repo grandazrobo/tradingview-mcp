@@ -42,6 +42,7 @@ Then trade cards using this EXACT table format:
 | Hard stop | EXACT PRICE | source |
 | TP1 | EXACT PRICE | source |
 | TP2 | EXACT PRICE | source |
+| Invalidation | above/below EXACT PRICE — one-line condition that kills the setup | source |
 | ATP instrument | SYMBOLUSDT.P on KuCoin Futures | |
 | Suggested leverage | Nx isolated | |
 | ATP fit | ✅ or ⚠️ description | |
@@ -63,6 +64,7 @@ Use these names consistently — do not use abbreviations or aliases:
 4. Entry must be a single number, not a range. Use midpoint or best-entry within the zone.
 5. Conviction labels: exactly HIGH, MEDIUM, or LOW in parentheses before "conviction".
 6. Tag levels: [TX] transcript only, [CHART] image only, [TX+CHART] both agree.
+7. Invalidation field: always present on every card. For conditional/queued setups it is the level that cancels the entire trade idea. For immediate setups it equals the hard stop. Format: "below 55.00" or "above 65,000".
 
 ## Sections to include in Document 1
 

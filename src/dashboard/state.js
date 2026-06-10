@@ -9,6 +9,7 @@ const DEFAULT_STATE = {
   starting_balance: 10000,
   balance: 10000,
   open_trades: [],
+  queued_trades: [],
   history: [],
   pairs: ['KUCOIN:SOLUSDT', 'KUCOIN:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:AVAXUSDT'],
   active_mode: null,
@@ -19,6 +20,7 @@ export function loadState() {
   try {
     const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
     if (!('active_mode' in state)) state.active_mode = null;
+    if (!('queued_trades' in state)) state.queued_trades = [];
     return state;
   } catch {
     return structuredClone(DEFAULT_STATE);
@@ -125,6 +127,113 @@ export function calcLivePnl(trade, current_price) {
     return parseFloat((trade.tp1_pnl + unrealized).toFixed(2));
   }
   return parseFloat((sign * ((current_price - trade.entry_price) / trade.entry_price) * trade.position_size).toFixed(2));
+}
+
+export function queueTrade(state, params) {
+  const {
+    symbol, direction, entry_zone, entry_condition,
+    invalidation_price, invalidation_direction,
+    stop_price, tp1_price, tp1_split, tp2_price, tp2_split,
+    margin_usd, leverage, conviction = null, source = null, card_title = null,
+  } = params;
+  const queued = {
+    id: randomUUID(),
+    symbol,
+    direction,
+    entry_zone,
+    entry_condition,
+    invalidation_price,
+    invalidation_direction,
+    stop_price,
+    tp1_price,
+    tp1_split: tp1_split ?? 30,
+    tp2_price,
+    tp2_split: tp2_split ?? 70,
+    margin_usd,
+    leverage,
+    conviction,
+    source,
+    card_title,
+    queued_at: new Date().toISOString(),
+    status: 'monitoring',
+    current_price: null,
+    last_checked: null,
+  };
+  state.queued_trades.push(queued);
+  saveState(state);
+  return queued;
+}
+
+export function removeQueued(state, id) {
+  const idx = state.queued_trades.findIndex(q => q.id === id);
+  if (idx === -1) return null;
+  const [removed] = state.queued_trades.splice(idx, 1);
+  saveState(state);
+  return removed;
+}
+
+export function updateQueued(state, id, patch) {
+  const q = state.queued_trades.find(q => q.id === id);
+  if (!q) return null;
+  const allowed = ['entry_zone', 'invalidation_price', 'invalidation_direction', 'stop_price', 'tp1_price', 'tp2_price'];
+  for (const key of allowed) {
+    if (key in patch) q[key] = patch[key];
+  }
+  saveState(state);
+  return q;
+}
+
+export function invalidateQueued(state, id) {
+  const q = state.queued_trades.find(q => q.id === id);
+  if (!q) return null;
+  q.status = 'invalidated';
+  saveState(state);
+  return q;
+}
+
+export function setQueuedReady(state, id) {
+  const q = state.queued_trades.find(q => q.id === id);
+  if (!q || q.status === 'invalidated') return null;
+  q.status = 'ready';
+  saveState(state);
+  return q;
+}
+
+export function activateQueued(state, id, entryPrice) {
+  const idx = state.queued_trades.findIndex(q => q.id === id);
+  if (idx === -1) return null;
+  const q = state.queued_trades[idx];
+  state.queued_trades.splice(idx, 1);
+  const price = entryPrice ?? q.entry_zone;
+  const position_size = q.margin_usd * q.leverage;
+  const trade = {
+    id: randomUUID(),
+    symbol: q.symbol,
+    direction: q.direction,
+    entry_price: price,
+    stop_price: q.stop_price,
+    tp1_price: q.tp1_price,
+    tp1_split: q.tp1_split,
+    tp2_price: q.tp2_price,
+    tp2_split: q.tp2_split,
+    margin_usd: q.margin_usd,
+    leverage: q.leverage,
+    position_size,
+    conviction: q.conviction,
+    source: q.source,
+    card_title: q.card_title,
+    opened_at: new Date().toISOString(),
+    status: 'open',
+    tp1_hit: false,
+    tp1_pnl: 0,
+    pnl: 0,
+    exit_price: null,
+    exit_reason: null,
+    closed_at: null,
+  };
+  state.open_trades.push(trade);
+  saveState(state);
+  return trade;
 }
 
 export function calcScorecard(state) {

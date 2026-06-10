@@ -45,12 +45,21 @@ async function postTrade(card) {
   return res.json();
 }
 
+async function postQueuedTrade(card) {
+  const res = await fetch(`${DASH_URL}/api/queue/add`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(card),
+  });
+  return res.json();
+}
+
 function fmt(n) {
   if (n === null || n === undefined) return '—';
   return n >= 1000 ? n.toLocaleString('en-US') : String(n);
 }
 
-function writeReport({ date, filePath, cards, skipped, loaded, conflicts, errors, mode, assessments, mtfContexts, iadssResults, cpResults }) {
+function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_loaded, conflicts, errors, mode, assessments, mtfContexts, iadssResults, cpResults }) {
   const now = new Date().toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland', hour12: false });
   const reportPath = join(dirname(filePath), `${date}_chart-hackers-load-report.md`);
 
@@ -77,6 +86,7 @@ function writeReport({ date, filePath, cards, skipped, loaded, conflicts, errors
     `**Generated:** ${now} NZT  `,
     `**Mode:** ${mode === 'execute' ? '✅ Executed' : '🔍 Dry run'}  `,
     `**Loaded:** ${loaded.length} trade(s)  `,
+    `**Queued:** ${(queued_loaded ?? []).length} setup(s)  `,
     `**Skipped (rules):** ${allSkipped.length}  `,
     `**Conflicts (already open):** ${conflicts.length}  `,
     ``,
@@ -115,6 +125,22 @@ function writeReport({ date, filePath, cards, skipped, loaded, conflicts, errors
     const title = dashIdx > -1 ? s.slice(0, dashIdx) : s;
     const reason = dashIdx > -1 ? s.slice(dashIdx + 11) : '';
     lines.push(`| ${title} | — | — | — | — | — | ❌ ${reason.replace(/^\(|\)$/g, '')} | Skipped |`);
+  }
+
+  if ((queued ?? []).length > 0) {
+    lines.push(``);
+    lines.push(`---`);
+    lines.push(``);
+    lines.push(`## Queued Setups (conditional entry — monitoring)`);
+    lines.push(``);
+    lines.push(`| Card | Entry Zone | Invalidation | Condition | Action |`);
+    lines.push(`|---|---|---|---|---|`);
+    for (const q of queued) {
+      const queued_result = (queued_loaded ?? []).find(ql => ql.card_title === q.card_title);
+      const action = queued_result ? '⏳ Queued' : '— (dry run)';
+      const inval = q.invalidation_price ? `${q.invalidation_direction ?? ''} ${q.invalidation_price}`.trim() : '—';
+      lines.push(`| ${q.card_title} | ${q.entry_zone} | ${inval} | ${(q.entry_condition ?? '').slice(0, 60)} | ${action} |`);
+    }
   }
 
   lines.push(``);
@@ -163,7 +189,7 @@ async function handler(opts, positionals) {
     return { success: false, date, error: `No synthesis brief found for ${date}`, path: filePath };
   }
 
-  const { cards, skipped, chart_unconfirmed } = parseBrief(filePath) ?? {};
+  const { cards, queued: queuedCards = [], skipped, chart_unconfirmed } = parseBrief(filePath) ?? {};
 
   if (!cards) {
     return { success: false, date, error: 'Failed to parse brief' };
@@ -229,6 +255,7 @@ async function handler(opts, positionals) {
     file: filePath,
     chart_unconfirmed,
     cards_found: cards.length,
+    queued_found: queuedCards.length,
     cards_skipped: skipped.length,
     skipped_reasons: skipped,
     cards,
@@ -236,7 +263,7 @@ async function handler(opts, positionals) {
 
   if (!execute) {
     console.error('\n  DRY RUN — pass --execute to load into TVDash\n');
-    console.error(`  Parsed ${cards.length} tradeable card(s), skipped ${skipped.length}\n`);
+    console.error(`  Parsed ${cards.length} tradeable card(s), ${queuedCards.length} queued, skipped ${skipped.length}\n`);
     for (const c of cards) {
       const a = assessments.get(c.card_title);
       console.error(`  [${c.conviction}] ${c.card_title}`);
@@ -247,14 +274,23 @@ async function handler(opts, positionals) {
       if (ia?.available) console.error(`    IADSS: ${ia.emoji} ${ia.rating} (${ia.score > 0 ? '+' : ''}${ia.score})`);
       if (cp?.available) console.error(`    CP:    ${cp.emoji} ${cp.rating} (${cp.score > 0 ? '+' : ''}${cp.score})`);
     }
+    if (queuedCards.length > 0) {
+      console.error('\n  Queued (conditional entry):');
+      for (const q of queuedCards) {
+        const inval = q.invalidation_price ? ` | Inval ${q.invalidation_direction ?? ''} ${q.invalidation_price}`.trim() : '';
+        console.error(`    ⏳ [${q.conviction}] ${q.card_title}`);
+        console.error(`       Zone ${q.entry_zone} | Stop ${q.stop_price}${inval}`);
+        console.error(`       Condition: ${q.entry_condition}`);
+      }
+    }
     if (skipped.length > 0) {
       console.error('\n  Skipped:');
       for (const s of skipped) console.error(`    ✗ ${s}`);
     }
     console.error('');
-    const reportPath = writeReport({ date, filePath, cards, skipped, loaded: [], conflicts: [], errors: [], mode: 'dry_run', assessments, mtfContexts, iadssResults, cpResults });
+    const reportPath = writeReport({ date, filePath, cards, queued: queuedCards, skipped, loaded: [], queued_loaded: [], conflicts: [], errors: [], mode: 'dry_run', assessments, mtfContexts, iadssResults, cpResults });
     console.error(`  Report written: ${reportPath}\n`);
-    return { ...summary, mode: 'dry_run', report: reportPath };
+    return { ...summary, mode: 'dry_run', queued: queuedCards.length, report: reportPath };
   }
 
   // Execute: check TVDash is up
@@ -294,12 +330,38 @@ async function handler(opts, positionals) {
     }
   }
 
+  // Queue conditional cards
+  const queued_loaded = [];
+  const queue_errors = [];
+  for (const card of queuedCards) {
+    const base = baseOf(card.symbol);
+    const key = `${base}:${card.direction}`;
+    if (openPositions.has(key)) {
+      console.error(`  ⏭ ${card.card_title} — ${base} ${card.direction} already open, skipping queue`);
+      continue;
+    }
+    try {
+      const result = await postQueuedTrade(card);
+      if (result.success) {
+        queued_loaded.push({ card_title: card.card_title, symbol: card.symbol, queued_id: result.queued?.id });
+        console.error(`  ⏳ ${card.card_title} — queued (${card.symbol} ${card.direction} @ ${card.entry_zone})`);
+      } else {
+        queue_errors.push({ card_title: card.card_title, error: result.error });
+        console.error(`  ✗ ${card.card_title} — queue error: ${result.error}`);
+      }
+    } catch (e) {
+      queue_errors.push({ card_title: card.card_title, error: e.message });
+      console.error(`  ✗ ${card.card_title} — ${e.message}`);
+    }
+  }
+
   // Persist deduplication log
   log[date] = {
     loaded_at: new Date().toISOString(),
     file: filePath,
     trade_ids: loaded.map(l => l.trade_id),
     trade_count: loaded.length,
+    queued_count: queued_loaded.length,
     conflicts: conflicts.length,
     errors: errors.length,
   };
@@ -319,7 +381,7 @@ async function handler(opts, positionals) {
     chart_unconfirmed,
   });
 
-  const reportPath = writeReport({ date, filePath, cards, skipped, loaded, conflicts, errors, mode: 'execute', assessments, mtfContexts, iadssResults, cpResults });
+  const reportPath = writeReport({ date, filePath, cards, queued: queuedCards, skipped, loaded, queued_loaded, conflicts, errors, mode: 'execute', assessments, mtfContexts, iadssResults, cpResults });
   console.error(`\n  Report written: ${reportPath}`);
 
   return {
@@ -327,6 +389,7 @@ async function handler(opts, positionals) {
     date,
     mode: 'execute',
     loaded,
+    queued: queued_loaded,
     conflicts,
     errors,
     skipped_parse: skipped,

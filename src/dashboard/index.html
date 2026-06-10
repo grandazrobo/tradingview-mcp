@@ -153,6 +153,25 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .tp1-badge { background:#0d1a0f; color:#00d084; font-size:9px; padding:1px 4px; border-radius:3px; }
 .no-trades { color:#444; font-size:12px; text-align:center; padding:16px 0; }
 
+/* ── Queued Trades ── */
+.queue-table { width:100%; border-collapse:collapse; }
+.queue-table th { color:#444; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
+.queue-table td { padding:6px 7px; border-bottom:1px solid #161616; color:#bbb; font-size:11px; vertical-align:top; }
+.queue-table td.sym { color:#fff; font-weight:700; white-space:nowrap; }
+.queue-table td.cond { max-width:200px; color:#666; font-style:italic; }
+.q-status { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; white-space:nowrap; }
+.q-status.monitoring { background:#1a1a2e; color:#7b9fff; }
+.q-status.ready { background:#0d1a0f; color:#00d084; }
+.q-status.invalidated { background:#1e1010; color:#555; }
+.q-badge { display:inline-block; background:#1a1a2e; color:#7b9fff; font-size:10px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:6px; }
+.q-btn { background:#1a1a1a; border:1px solid #333; color:#888; border-radius:4px; padding:2px 7px; font-family:inherit; font-size:10px; cursor:pointer; margin-right:4px; }
+.q-btn.load { border-color:#00d08444; color:#00d084; }
+.q-btn.remove { border-color:#ff444433; color:#ff6666; }
+.q-dist { font-size:10px; }
+.q-dist.close { color:#00d084; }
+.q-dist.far { color:#555; }
+.empty-queue { color:#444; font-size:12px; text-align:center; padding:16px 0; }
+
 /* ── History ── */
 .history-table { width:100%; border-collapse:collapse; }
 .history-table th { color:#444; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
@@ -304,6 +323,17 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
     </div>
 
     <div class="panel">
+      <div class="panel-title">Queued Trades <span id="queueBadge"></span></div>
+      <div id="queueWrap">
+        <table class="queue-table">
+          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry Zone</th><th>Inval.</th><th>Price</th><th>Distance</th><th>Condition</th><th>Status</th><th>Days</th><th>Actions</th></tr></thead>
+          <tbody id="queueBody"></tbody>
+        </table>
+        <div class="empty-queue" id="emptyQueue">No queued setups</div>
+      </div>
+    </div>
+
+    <div class="panel">
       <div class="panel-title">Trade History</div>
       <div id="historyWrap">
         <table class="history-table">
@@ -403,12 +433,93 @@ async function fetchState() {
   } catch {}
 }
 
+let queueState = [];
+
+async function fetchQueue() {
+  try {
+    const r = await fetch('/api/queue');
+    if (!r.ok) return;
+    const data = await r.json();
+    queueState = data.queued_trades ?? [];
+    renderQueue();
+  } catch {}
+}
+
+function renderQueue() {
+  const tbody = document.getElementById('queueBody');
+  const emptyEl = document.getElementById('emptyQueue');
+  if (!queueState || queueState.length === 0) {
+    tbody.innerHTML = '';
+    emptyEl.style.display = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  tbody.innerHTML = queueState.map(q => {
+    const sym = q.symbol.split(':').pop();
+    const dirCls = q.direction === 'long' ? 'long' : 'short';
+    const price = q.current_price;
+    const priceTxt = price ? (price >= 1000 ? price.toLocaleString('en-US', {maximumFractionDigits:0}) : price.toFixed(4)) : '—';
+    let distTxt = '—', distCls = 'far';
+    if (price && q.entry_zone) {
+      const pct = ((price - q.entry_zone) / q.entry_zone * 100);
+      const absPct = Math.abs(pct).toFixed(1);
+      distTxt = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+      distCls = Math.abs(pct) <= 2 ? 'close' : 'far';
+    }
+    const inval = q.invalidation_price
+      ? `${q.invalidation_direction ?? ''} ${q.invalidation_price >= 1000 ? q.invalidation_price.toLocaleString() : q.invalidation_price}`.trim()
+      : '—';
+    const entryZoneTxt = q.entry_zone >= 1000 ? q.entry_zone.toLocaleString() : q.entry_zone;
+    const daysAgo = q.queued_at ? Math.floor((Date.now() - new Date(q.queued_at)) / 86400000) : 0;
+    const lastCheck = q.last_checked ? new Date(q.last_checked).toLocaleTimeString('en-NZ', {hour:'2-digit',minute:'2-digit'}) : '—';
+    let statusBadge;
+    if (q.status === 'ready') statusBadge = '<span class="q-status ready">🟢 Ready</span>';
+    else if (q.status === 'invalidated') statusBadge = '<span class="q-status invalidated">🔴 Invalidated</span>';
+    else statusBadge = '<span class="q-status monitoring">🔵 Monitoring</span>';
+    const canLoad = q.status === 'ready' || q.status === 'monitoring';
+    const actions = `${canLoad ? `<button class="q-btn load" onclick="loadQueued('${q.id}')">Load</button>` : ''}
+      <button class="q-btn remove" onclick="removeQueuedTrade('${q.id}')">✕</button>`;
+    return `<tr style="${q.status==='invalidated'?'opacity:0.4;':''}">
+      <td class="sym"><span class="badge ${dirCls}" style="margin-right:4px;font-size:9px;">${q.direction}</span>${sym}</td>
+      <td><span class="badge ${dirCls}" style="font-size:9px;">${q.direction==='long'?'L':'S'}</span></td>
+      <td>${entryZoneTxt}</td>
+      <td style="color:#ff6666;font-size:11px;">${inval}</td>
+      <td>${priceTxt}</td>
+      <td class="q-dist ${distCls}">${distTxt}</td>
+      <td class="cond">${(q.entry_condition ?? '').slice(0, 55)}${(q.entry_condition ?? '').length > 55 ? '…' : ''}</td>
+      <td>${statusBadge}</td>
+      <td style="color:#555;">${daysAgo}d</td>
+      <td style="white-space:nowrap;">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadQueued(id) {
+  try {
+    const r = await fetch(`/api/queue/load/${id}`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) });
+    const d = await r.json();
+    if (d.success) { showToast('Trade loaded from queue'); fetchQueue(); fetchState(); }
+    else showToast('Error: ' + (d.error ?? 'unknown'), true);
+  } catch { showToast('Request failed', true); }
+}
+
+async function removeQueuedTrade(id) {
+  try {
+    const r = await fetch(`/api/queue/${id}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) { showToast('Removed from queue'); fetchQueue(); }
+    else showToast('Error: ' + (d.error ?? 'unknown'), true);
+  } catch { showToast('Request failed', true); }
+}
+
 async function poll() {
   await Promise.all([fetchQuote(), fetchState()]);
 }
 
 setInterval(poll, 3000);
+setInterval(fetchQueue, 30000);
 poll();
+fetchQueue();
 
 // ── Render ───────────────────────────────────────────────────────
 function fmt(n, decimals = 2) {
@@ -502,6 +613,14 @@ function renderState() {
         ${t.source ? `<div style="font-size:10px;color:#444;margin-top:4px;">${t.card_title || ''} · ${t.source}</div>` : ''}
       </div>`;
     }).join('');
+  }
+
+  // Queue (rendered separately from fetchQueue — just update badge count)
+  if (appState.queued_trades) {
+    const active = appState.queued_trades.filter(q => q.status !== 'invalidated');
+    const badge = document.getElementById('queueBadge');
+    badge.textContent = active.length > 0 ? active.length : '';
+    badge.className = active.length > 0 ? 'q-badge' : '';
   }
 
   // History

@@ -7,6 +7,7 @@ import * as chart from '../../core/chart.js';
 import {
   loadState, resetState, openTrade, closeTrade, hitTp1,
   calcLivePnl, calcScorecard, saveState,
+  queueTrade, removeQueued, updateQueued, activateQueued, invalidateQueued,
 } from '../../dashboard/state.js';
 import {
   notifyTradeOpen, notifyTp1Hit, notifyTradeClose,
@@ -73,8 +74,19 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       const url = `https://api.binance.com/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(symbols))}`;
       const resp = await fetch(url);
       const prices = await resp.json();
-      for (const { symbol, price } of prices) {
-        updatePrice(symbol.replace(/USDT$/i, ''), parseFloat(price));
+      if (Array.isArray(prices)) {
+        for (const { symbol, price } of prices) {
+          updatePrice(symbol.replace(/USDT$/i, ''), parseFloat(price));
+        }
+      } else {
+        // Batch failed (likely one invalid symbol) — fall back to individual requests
+        await Promise.all(symbols.map(async sym => {
+          try {
+            const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`);
+            const d = await r.json();
+            if (d.price) updatePrice(sym.replace(/USDT$/i, ''), parseFloat(d.price));
+          } catch { /* symbol not on Binance */ }
+        }));
       }
     } catch { /* external API unavailable */ }
   }
@@ -107,8 +119,54 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     }
   }
 
+  // Fetch a single price from Binance (with individual fallback already built in)
+  async function fetchPrice(base) {
+    try {
+      const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${base}USDT`);
+      const d = await r.json();
+      return d.price ? parseFloat(d.price) : null;
+    } catch { return null; }
+  }
+
+  // Queued trade monitor — runs every 5 minutes
+  async function checkQueuedTrades() {
+    const active = (state.queued_trades ?? []).filter(q => q.status === 'monitoring');
+    if (active.length === 0) return;
+    const now = new Date().toISOString();
+    for (const q of active) {
+      const base = baseOf(q.symbol);
+      const price = priceMap[base] ?? await fetchPrice(base);
+      if (price == null) continue;
+      q.current_price = price;
+      q.last_checked = now;
+
+      // Invalidation check
+      const invalidated = q.invalidation_price != null && (
+        (q.invalidation_direction === 'below' && price < q.invalidation_price) ||
+        (q.invalidation_direction === 'above' && price > q.invalidation_price)
+      );
+      if (invalidated) {
+        invalidateQueued(state, q.id);
+        console.error(`  [Queue] ${q.symbol} invalidated — price ${price} breached ${q.invalidation_direction} ${q.invalidation_price}`);
+        continue;
+      }
+
+      // Entry zone check — within 0.5% of entry_zone → auto-load
+      const distPct = Math.abs((price - q.entry_zone) / q.entry_zone) * 100;
+      if (distPct <= 0.5) {
+        const trade = activateQueued(state, q.id, q.entry_zone);
+        if (trade) {
+          notifyTradeOpen(trade);
+          console.error(`  [Queue] ${q.symbol} AUTO-LOADED — price ${price} entered zone ${q.entry_zone}`);
+        }
+      }
+    }
+    saveState(state);
+  }
+
   setInterval(pollTVPrice, 3000);
   setInterval(pollAllPrices, 3000);
+  setInterval(checkQueuedTrades, 300_000);
   await Promise.all([pollTVPrice(), pollAllPrices()]);
 
   // ── Static ─────────────────────────────────────────────────────
@@ -209,6 +267,60 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     if (!closed) return res.status(404).json({ error: 'Trade not found' });
     notifyTradeClose(closed);
     res.json({ success: true, trade: closed });
+  });
+
+  app.get('/api/queue', (_req, res) => {
+    const q = (state.queued_trades ?? []).map(q => ({
+      ...q,
+      current_price: priceMap[baseOf(q.symbol)] ?? q.current_price ?? null,
+    }));
+    res.json({ queued_trades: q });
+  });
+
+  app.post('/api/queue/add', (req, res) => {
+    const {
+      symbol, direction, entry_zone, entry_condition,
+      invalidation_price, invalidation_direction,
+      stop_price, tp1_price, tp1_split, tp2_price, tp2_split,
+      margin_usd, leverage, conviction, source, card_title,
+    } = req.body;
+    if (!symbol || !direction || !entry_zone || !stop_price || !tp1_price || !tp2_price) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (!state.queued_trades) state.queued_trades = [];
+    const queued = queueTrade(state, {
+      symbol, direction, entry_zone: Number(entry_zone), entry_condition,
+      invalidation_price: invalidation_price ? Number(invalidation_price) : null,
+      invalidation_direction,
+      stop_price: Number(stop_price),
+      tp1_price: Number(tp1_price), tp1_split: Number(tp1_split ?? 30),
+      tp2_price: Number(tp2_price), tp2_split: Number(tp2_split ?? 70),
+      margin_usd: Number(margin_usd), leverage: Number(leverage),
+      conviction, source, card_title,
+    });
+    res.json({ success: true, queued });
+  });
+
+  app.post('/api/queue/load/:id', (req, res) => {
+    const { id } = req.params;
+    const { price } = req.body;
+    const entryPrice = price ? Number(price) : null;
+    const trade = activateQueued(state, id, entryPrice);
+    if (!trade) return res.status(404).json({ error: 'Queued trade not found' });
+    notifyTradeOpen(trade);
+    res.json({ success: true, trade });
+  });
+
+  app.delete('/api/queue/:id', (req, res) => {
+    const removed = removeQueued(state, req.params.id);
+    if (!removed) return res.status(404).json({ error: 'Queued trade not found' });
+    res.json({ success: true, removed });
+  });
+
+  app.patch('/api/queue/:id', (req, res) => {
+    const updated = updateQueued(state, req.params.id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Queued trade not found' });
+    res.json({ success: true, queued: updated });
   });
 
   app.post('/api/symbol', async (req, res) => {

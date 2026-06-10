@@ -73,6 +73,16 @@ function isConditional(str) {
   return /1h close (below|above)|pending sweep|wait for|retest from below|breakdown trigger|manage by structure|held position/i.test(str);
 }
 
+// Parse an invalidation field like "below 55.00" or "above 65,000"
+function parseInvalidation(raw) {
+  if (!raw) return { invalidation_price: null, invalidation_direction: null };
+  const clean = raw.replace(/\*+/g, '').replace(/,/g, '').replace(/\$/g, '');
+  const m = clean.match(/(above|below)\s+([\d]+\.?\d*)/i);
+  if (m) return { invalidation_price: parseFloat(m[2]), invalidation_direction: m[1].toLowerCase() };
+  const n = extractNumber(raw);
+  return { invalidation_price: n, invalidation_direction: null };
+}
+
 // Parse a markdown table into a { field_lowercase: value } map (takes col[1] as value)
 function parseTable(text) {
   const map = {};
@@ -137,6 +147,7 @@ export function parseBrief(filePath) {
   }
 
   const cards = [];
+  const queued = [];
   const skipped = [];
 
   for (let i = 0; i < headings.length; i++) {
@@ -171,21 +182,70 @@ export function parseBrief(filePath) {
       skipped.push(`${title} — skipped (no entry field)`);
       continue;
     }
-    if (isConditional(entryRaw)) {
-      skipped.push(`${title} — skipped (conditional entry: "${entryRaw.slice(0, 60)}")`);
+
+    // Symbol — try ATP instrument field first, fall back to inferring from card title
+    const atpRaw = get(fields, 'atp instrument');
+    const symbol = mapSymbol(atpRaw) ?? inferSymbolFromTitle(title);
+    if (!symbol) {
+      skipped.push(`${title} — skipped (can't parse symbol from: "${atpRaw}")`);
       continue;
     }
-    const entry_price = extractNumber(entryRaw);
-    if (!entry_price) {
-      skipped.push(`${title} — skipped (unparseable entry: "${entryRaw.slice(0, 60)}")`);
-      continue;
-    }
+
+    // Leverage + margin
+    const leverageRaw = get(fields, 'suggested leverage', 'leverage');
+    const leverage = leverageRaw ? (extractNumber(leverageRaw) || 20) : 20;
+    const margin_usd = symbol.includes('BTC') ? 1000 : 500;
 
     // Stop — hard stop is a plain price, soft stop may be "1H close above X" (use extractStopPrice)
     const hardStopRaw = get(fields, 'hard stop');
     const softStopRaw = get(fields, 'stop');
     let stop_price = hardStopRaw ? extractNumber(hardStopRaw) : null;
     if (!stop_price) stop_price = softStopRaw ? extractStopPrice(softStopRaw) : null;
+
+    // TPs
+    const tp1Raw = get(fields, 'tp1');
+    const tp2Raw = get(fields, 'tp2') ?? get(fields, 'tp3');
+    const tp1_price = tp1Raw ? extractNumber(tp1Raw) : null;
+    const tp2_price = tp2Raw ? extractNumber(tp2Raw) : null;
+
+    // Invalidation field (new — may be absent on older briefs)
+    const invalidationRaw = get(fields, 'invalidation');
+    const { invalidation_price, invalidation_direction } = parseInvalidation(invalidationRaw);
+
+    // ── Conditional entry → queue instead of skip ──────────────────
+    if (isConditional(entryRaw)) {
+      const entry_zone = extractNumber(entryRaw);
+      if (!entry_zone || !stop_price || !tp1_price || !tp2_price) {
+        skipped.push(`${title} — skipped (conditional entry but missing price fields)`);
+        continue;
+      }
+      queued.push({
+        card_title: title,
+        symbol,
+        direction,
+        entry_zone,
+        entry_condition: entryRaw.trim(),
+        invalidation_price,
+        invalidation_direction,
+        stop_price,
+        tp1_price,
+        tp1_split: 30,
+        tp2_price,
+        tp2_split: 70,
+        margin_usd,
+        leverage,
+        conviction,
+        source: `chart-hackers-dylan-${date}`,
+      });
+      continue;
+    }
+
+    const entry_price = extractNumber(entryRaw);
+    if (!entry_price) {
+      skipped.push(`${title} — skipped (unparseable entry: "${entryRaw.slice(0, 60)}")`);
+      continue;
+    }
+
     if (!stop_price) {
       skipped.push(`${title} — skipped (no parseable stop)`);
       continue;
@@ -198,30 +258,10 @@ export function parseBrief(filePath) {
       continue;
     }
 
-    // TPs
-    const tp1Raw = get(fields, 'tp1');
-    const tp2Raw = get(fields, 'tp2') ?? get(fields, 'tp3'); // use TP3 as TP2 if TP2 absent
-    const tp1_price = tp1Raw ? extractNumber(tp1Raw) : null;
-    const tp2_price = tp2Raw ? extractNumber(tp2Raw) : null;
     if (!tp1_price || !tp2_price) {
       skipped.push(`${title} — skipped (missing TP1 or TP2)`);
       continue;
     }
-
-    // Symbol — try ATP instrument field first, fall back to inferring from card title
-    const atpRaw = get(fields, 'atp instrument');
-    const symbol = mapSymbol(atpRaw) ?? inferSymbolFromTitle(title);
-    if (!symbol) {
-      skipped.push(`${title} — skipped (can't parse symbol from: "${atpRaw}")`);
-      continue;
-    }
-
-    // Leverage
-    const leverageRaw = get(fields, 'suggested leverage', 'leverage');
-    const leverage = leverageRaw ? (extractNumber(leverageRaw) || 20) : 20;
-
-    // Margin: BTC = $1000, alts = $500
-    const margin_usd = symbol.includes('BTC') ? 1000 : 500;
 
     cards.push({
       card_title: title,
@@ -241,5 +281,5 @@ export function parseBrief(filePath) {
     });
   }
 
-  return { date, cards, skipped, chart_unconfirmed: chartUnconfirmed };
+  return { date, cards, queued, skipped, chart_unconfirmed: chartUnconfirmed };
 }
