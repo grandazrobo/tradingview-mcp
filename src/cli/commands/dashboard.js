@@ -290,7 +290,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     res.json({ queued_trades: q });
   });
 
-  app.post('/api/queue/add', (req, res) => {
+  app.post('/api/queue/add', async (req, res) => {
     const {
       symbol, direction, entry_zone, entry_condition,
       invalidation_price, invalidation_direction,
@@ -303,7 +303,7 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     if (!state.queued_trades) state.queued_trades = [];
     const zone = Number(entry_zone);
     const invalPrice = invalidation_price ? Number(invalidation_price) : null;
-    const currentPrice = priceMap[baseOf(symbol)] ?? null;
+    const currentPrice = priceMap[baseOf(symbol)] ?? await fetchPrice(baseOf(symbol));
     const isLong = direction === 'long';
 
     if (currentPrice) {
