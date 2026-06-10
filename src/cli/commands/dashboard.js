@@ -85,11 +85,9 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
       } else {
         // Batch failed (likely one invalid symbol) — fall back to individual requests
         await Promise.all(symbols.map(async sym => {
-          try {
-            const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`);
-            const d = await r.json();
-            if (d.price) updatePrice(sym.replace(/USDT$/i, ''), parseFloat(d.price));
-          } catch { /* symbol not on Binance */ }
+          const base = sym.replace(/USDT$/i, '');
+          const price = await fetchPrice(base);
+          if (price) updatePrice(base, price);
         }));
       }
     } catch { /* external API unavailable */ }
@@ -123,12 +121,16 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     }
   }
 
-  // Fetch a single price from Binance (with individual fallback already built in)
+  // Fetch a single price — spot first, futures fallback (e.g. HYPE is futures-only on Binance)
   async function fetchPrice(base) {
     try {
-      const r = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${base}USDT`);
-      const d = await r.json();
-      return d.price ? parseFloat(d.price) : null;
+      const sym = `${base}USDT`;
+      const spot = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`);
+      const sd = await spot.json();
+      if (sd.price) return parseFloat(sd.price);
+      const fut = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${sym}`);
+      const fd = await fut.json();
+      return fd.price ? parseFloat(fd.price) : null;
     } catch { return null; }
   }
 
