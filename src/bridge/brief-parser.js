@@ -212,6 +212,43 @@ export function parseBrief(filePath) {
     const invalidationRaw = get(fields, 'invalidation');
     const { invalidation_price, invalidation_direction } = parseInvalidation(invalidationRaw);
 
+    // ── Explicit queue flag: ATP fit contains "queued" OR queue: yes field ──
+    const atpFitRaw = get(fields, 'atp fit');
+    const queueFieldRaw = get(fields, 'queue');
+    const isQueuedByFlag =
+      (atpFitRaw && /queued/i.test(atpFitRaw)) ||
+      (queueFieldRaw && /^yes$/i.test((queueFieldRaw ?? '').trim())) ||
+      // Belt-and-suspenders: ATP fit uses conditional language even without the "queued" keyword
+      (atpFitRaw && /\bonly if\b|alert.only|needs.*breakdown|needs.*sweep|needs.*double.tap|requires.*trigger|not actionable until/i.test(atpFitRaw));
+
+    if (isQueuedByFlag) {
+      const entry_zone = extractNumber(entryRaw);
+      if (!entry_zone || !stop_price || !tp1_price || !tp2_price) {
+        skipped.push(`${title} — skipped (queued flag set but missing price fields)`);
+        continue;
+      }
+      const conditionText = (atpFitRaw ?? 'queued setup').replace(/^[^\w(]+/, '').trim();
+      queued.push({
+        card_title: title,
+        symbol,
+        direction,
+        entry_zone,
+        entry_condition: conditionText,
+        invalidation_price,
+        invalidation_direction,
+        stop_price,
+        tp1_price,
+        tp1_split: 30,
+        tp2_price,
+        tp2_split: 70,
+        margin_usd,
+        leverage,
+        conviction,
+        source: `chart-hackers-dylan-${date}`,
+      });
+      continue;
+    }
+
     // ── Conditional entry → queue instead of skip ──────────────────
     if (isConditional(entryRaw)) {
       const entry_zone = extractNumber(entryRaw);

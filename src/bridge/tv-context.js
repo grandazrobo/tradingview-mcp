@@ -4,16 +4,18 @@ import * as pane from '../core/pane.js';
 import { assessIADSS } from './iadss-rules.js';
 import { assessChartPrime } from './chartprime-rules.js';
 
-// Fetch current price from Binance REST (works for any symbol, no TV needed)
+// Fetch current price — Binance spot first, futures fallback (e.g. HYPE is futures-only)
 export async function fetchBinancePrice(symbol) {
   const ticker = symbol.includes(':') ? symbol.split(':')[1] : symbol;
-  // Strip exchange suffix variations and ensure USDT suffix
   const base = ticker.replace(/(USDT|USDC|USD)$/i, '');
   const pair = `${base}USDT`;
   try {
-    const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${pair}`);
-    const json = await res.json();
-    return json.price ? parseFloat(json.price) : null;
+    const spot = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${pair}`);
+    const sj = await spot.json();
+    if (sj.price) return parseFloat(sj.price);
+    const fut = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${pair}`);
+    const fj = await fut.json();
+    return fj.price ? parseFloat(fj.price) : null;
   } catch {
     return null;
   }
@@ -130,9 +132,9 @@ export function assessSetup(card, currentPrice) {
   const absPct = Math.abs(distancePct);
 
   // Is price on the wrong side of entry (moved away in the wrong direction)?
-  // Long: price should be AT or BELOW entry to buy. If price is well above entry, missed.
-  // Short: price should be AT or ABOVE entry to sell. If price is well below entry, missed.
-  const wrongSide = isLong ? distancePct > 2 : distancePct < -2;
+  // Long pullback: we buy when price drops to entry. Wrong side = price fell BELOW entry (missed the bounce).
+  // Short retest: we sell when price rises to entry. Wrong side = price pumped ABOVE entry (missed the top).
+  const wrongSide = isLong ? distancePct < -2 : distancePct > 2;
 
   if (absPct <= 0.5) {
     return {
