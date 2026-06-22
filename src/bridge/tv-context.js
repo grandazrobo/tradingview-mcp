@@ -64,7 +64,7 @@ export async function fetchMTFContext(symbol) {
       const tf = p.resolution ?? '?';
       try {
         await pane.setSymbol({ index: p.index, symbol });
-        await new Promise(r => setTimeout(r, 3000)); // wait for indicators to reload
+        await new Promise(r => setTimeout(r, 6000)); // wait for indicators to reload (6s for encrypted oscillators)
 
         const [studyResult, linesResult, labelsResult] = await Promise.allSettled([
           data.getStudyValues(),

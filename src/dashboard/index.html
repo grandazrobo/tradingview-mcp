@@ -18,19 +18,25 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .live-chg { font-size:12px; }
 .live-chg.up { color:#00d084; }
 .live-chg.dn { color:#ff4444; }
-.meta { color:#666; font-size:11px; margin-top:2px; }
+.meta { color:#888; font-size:11px; margin-top:2px; }
 .balance-box { text-align:right; }
 .balance-label { color:#888; font-size:11px; text-transform:uppercase; letter-spacing:1px; }
 .balance-val { font-size:20px; font-weight:700; color:#fff; }
 .balance-pnl { font-size:12px; }
 .balance-pnl.up { color:#00d084; }
 .balance-pnl.dn { color:#ff4444; }
+.balance-equity-row { display:flex; justify-content:space-between; gap:10px; font-size:11px; margin-top:2px; }
+.balance-eq-lbl { color:#888; text-transform:uppercase; letter-spacing:0.5px; }
+.balance-eq-val { font-weight:700; color:#999; }
+.balance-eq-val.up { color:#00d084; }
+.balance-eq-val.dn { color:#ff4444; }
+.balance-eq-val.neu { color:#999; }
 
 /* ── Mode Bar ── */
 .mode-bar { display:flex; gap:6px; margin-bottom:12px; }
 .mode-btn {
   flex:1; padding:8px 4px; border-radius:6px; border:1px solid #2a2a2a;
-  background:#1a1a1a; color:#555; font-family:inherit; font-size:11px;
+  background:#1a1a1a; color:#888; font-family:inherit; font-size:11px;
   font-weight:700; text-transform:uppercase; letter-spacing:1px;
   cursor:pointer; transition:all 0.15s;
 }
@@ -42,7 +48,7 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 /* ── Grid ── */
 .grid { display:grid; grid-template-columns:320px 1fr; gap:12px; }
 .panel { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:8px; padding:14px; }
-.panel-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#555; margin-bottom:12px; }
+.panel-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#888; margin-bottom:12px; }
 
 /* ── Order Entry ── */
 .order-tabs { display:flex; gap:5px; margin-bottom:12px; }
@@ -53,37 +59,37 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .tab.active.short { background:#ff4444; color:#fff; }
 
 .quick-entry { background:#111; border-radius:6px; padding:10px; margin-bottom:10px; }
-.quick-label { color:#666; font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+.quick-label { color:#888; font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
 .quick-btn { width:100%; padding:9px; border-radius:6px; border:none; background:#00d084; color:#000; font-size:13px; font-weight:700; font-family:inherit; cursor:pointer; }
-.quick-meta { color:#555; font-size:10px; margin-top:5px; text-align:center; }
+.quick-meta { color:#888; font-size:10px; margin-top:5px; text-align:center; }
 
-.divider { display:flex; align-items:center; gap:8px; margin:10px 0; color:#444; font-size:10px; }
+.divider { display:flex; align-items:center; gap:8px; margin:10px 0; color:#666; font-size:10px; }
 .divider::before,.divider::after { content:''; flex:1; height:1px; background:#222; }
 
 .margin-block { background:#111; border-radius:6px; padding:10px; margin-bottom:10px; }
-.mb-title { color:#666; font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.mb-title { color:#888; font-size:10px; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
 .margin-row { display:flex; gap:6px; margin-bottom:8px; }
 .mfield { flex:1; }
-.mfield label { display:block; color:#555; font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
+.mfield label { display:block; color:#888; font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
 .sm-input { width:100%; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:4px; padding:5px 8px; color:#fff; font-family:inherit; font-size:12px; }
 .sm-input:focus { outline:none; border-color:#444; }
 .lev-row { display:flex; gap:5px; margin-bottom:8px; }
-.lev-btn { flex:1; padding:5px 2px; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:4px; color:#555; font-family:inherit; font-size:11px; font-weight:700; cursor:pointer; text-align:center; }
+.lev-btn { flex:1; padding:5px 2px; background:#1a1a1a; border:1px solid #2a2a2a; border-radius:4px; color:#888; font-family:inherit; font-size:11px; font-weight:700; cursor:pointer; text-align:center; }
 .lev-btn.active { background:#2a1f5e; border-color:#7b6bff; color:#a89cff; }
 .margin-summary { display:flex; justify-content:space-between; padding-top:6px; border-top:1px solid #1e1e1e; }
 .ms-item { text-align:center; }
-.ms-lbl { color:#444; font-size:9px; text-transform:uppercase; letter-spacing:1px; }
+.ms-lbl { color:#777; font-size:9px; text-transform:uppercase; letter-spacing:1px; }
 .ms-val { font-size:11px; font-weight:700; margin-top:2px; color:#888; }
 .ms-val.blue { color:#7b9fff; }
 .ms-val.red { color:#ff6666; }
 
 .field { margin-bottom:8px; }
-.field label { display:block; color:#555; font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
+.field label { display:block; color:#888; font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
 .dual { display:flex; gap:5px; align-items:center; }
 .dual .pi { flex:2; background:#111; border:1px solid #2a2a2a; border-radius:4px; padding:5px 8px; color:#fff; font-family:inherit; font-size:12px; min-width:0; }
-.dual .pct { flex:1; background:#111; border:1px solid #2a2a2a; border-radius:4px; padding:5px 6px; color:#666; font-family:inherit; font-size:11px; min-width:0; }
+.dual .pct { flex:1; background:#111; border:1px solid #2a2a2a; border-radius:4px; padding:5px 6px; color:#888; font-family:inherit; font-size:11px; min-width:0; }
 .dual input:focus { outline:none; border-color:#444; }
-.sep { color:#333; font-size:10px; }
+.sep { color:#666; font-size:10px; }
 .stop-f { border-color:#ff444455 !important; }
 .tp1-f { border-color:#00d08455 !important; }
 .tp2-f { border-color:#00b87555 !important; }
@@ -100,10 +106,10 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .tp-tag.t1 { color:#00d084; }
 .tp-tag.t2 { color:#00b875; }
 .tp-line .pi { flex:2; background:#111; border:1px solid #2a2a2a; border-radius:4px; padding:5px 7px; color:#fff; font-family:inherit; font-size:11px; min-width:0; }
-.tp-line .pct { flex:1; background:#111; border:1px solid #2a2a2a; border-radius:4px; padding:5px 5px; color:#666; font-family:inherit; font-size:10px; min-width:0; }
+.tp-line .pct { flex:1; background:#111; border:1px solid #2a2a2a; border-radius:4px; padding:5px 5px; color:#888; font-family:inherit; font-size:10px; min-width:0; }
 .tp-line input:focus { outline:none; border-color:#444; }
 .sp-line { display:flex; align-items:center; gap:5px; }
-.sp-lbl { color:#444; font-size:9px; white-space:nowrap; }
+.sp-lbl { color:#777; font-size:9px; white-space:nowrap; }
 .sp-input { width:38px; background:#111; border:1px solid #2a2a2a; border-radius:4px; padding:4px 5px; color:#fff; font-family:inherit; font-size:11px; font-weight:700; text-align:center; }
 .sp-bar { flex:1; height:5px; border-radius:3px; background:#1a1a1a; overflow:hidden; min-width:20px; }
 .sp-bar-fill { height:100%; border-radius:3px; transition:width .2s; }
@@ -113,7 +119,7 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 
 .rr-preview { background:#111; border-radius:6px; padding:8px 10px; margin-bottom:10px; display:flex; justify-content:space-between; }
 .rr-item { text-align:center; }
-.rr-lbl { color:#444; font-size:9px; text-transform:uppercase; letter-spacing:1px; }
+.rr-lbl { color:#777; font-size:9px; text-transform:uppercase; letter-spacing:1px; }
 .rr-val { font-size:12px; font-weight:700; margin-top:2px; }
 .rr-val.green { color:#00d084; }
 .rr-val.red { color:#ff4444; }
@@ -125,12 +131,12 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 /* ── Scorecard ── */
 .scorecard { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:12px; }
 .score-item { background:#111; border-radius:6px; padding:10px 12px; }
-.score-label { color:#555; font-size:10px; text-transform:uppercase; letter-spacing:1px; }
+.score-label { color:#888; font-size:10px; text-transform:uppercase; letter-spacing:1px; }
 .score-val { font-size:18px; font-weight:700; margin-top:4px; }
 .score-val.green { color:#00d084; }
 .score-val.red { color:#ff4444; }
 .score-val.blue { color:#7b9fff; }
-.score-sub { color:#444; font-size:10px; margin-top:2px; }
+.score-sub { color:#777; font-size:10px; margin-top:2px; }
 
 /* ── Active Trades ── */
 .trade-row { background:#111; border-radius:6px; padding:10px 12px; margin-bottom:8px; border-left:3px solid #00d084; }
@@ -145,44 +151,44 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .trade-pnl.neg { color:#ff4444; }
 .close-btn { background:#1a1a1a; border:1px solid #333; color:#888; border-radius:4px; padding:3px 8px; font-family:inherit; font-size:11px; cursor:pointer; }
 .trade-levels { display:flex; gap:12px; font-size:11px; flex-wrap:wrap; }
-.lv { color:#444; }
-.ev { color:#bbb !important; }
+.lv { color:#777; }
+.ev { color:#aaa !important; }
 .sv { color:#ff6666 !important; }
 .t1v { color:#00d084 !important; }
 .t2v { color:#00b875 !important; }
 .tp1-badge { background:#0d1a0f; color:#00d084; font-size:9px; padding:1px 4px; border-radius:3px; }
-.no-trades { color:#444; font-size:12px; text-align:center; padding:16px 0; }
+.no-trades { color:#777; font-size:12px; text-align:center; padding:16px 0; }
 
 /* ── Queued Trades ── */
 .queue-table { width:100%; border-collapse:collapse; }
-.queue-table th { color:#444; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
-.queue-table td { padding:6px 7px; border-bottom:1px solid #161616; color:#bbb; font-size:11px; vertical-align:top; }
+.queue-table th { color:#777; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
+.queue-table td { padding:6px 7px; border-bottom:1px solid #161616; color:#aaa; font-size:11px; vertical-align:top; }
 .queue-table td.sym { color:#fff; font-weight:700; white-space:nowrap; }
-.queue-table td.cond { max-width:200px; color:#666; font-style:italic; }
+.queue-table td.cond { max-width:200px; color:#888; font-style:italic; }
 .q-status { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; white-space:nowrap; }
 .q-status.monitoring { background:#1a1a2e; color:#7b9fff; }
 .q-status.ready { background:#0d1a0f; color:#00d084; }
-.q-status.invalidated { background:#1e1010; color:#555; }
+.q-status.invalidated { background:#1e1010; color:#777; }
 .q-badge { display:inline-block; background:#1a1a2e; color:#7b9fff; font-size:10px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:6px; }
 .q-btn { background:#1a1a1a; border:1px solid #333; color:#888; border-radius:4px; padding:2px 7px; font-family:inherit; font-size:10px; cursor:pointer; margin-right:4px; }
 .q-btn.load { border-color:#00d08444; color:#00d084; }
 .q-btn.remove { border-color:#ff444433; color:#ff6666; }
 .q-dist { font-size:10px; }
 .q-dist.close { color:#00d084; }
-.q-dist.far { color:#555; }
-.empty-queue { color:#444; font-size:12px; text-align:center; padding:16px 0; }
+.q-dist.far { color:#888; }
+.empty-queue { color:#777; font-size:12px; text-align:center; padding:16px 0; }
 
 /* ── History ── */
 .history-table { width:100%; border-collapse:collapse; }
-.history-table th { color:#444; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
-.history-table td { padding:6px 7px; border-bottom:1px solid #161616; color:#bbb; font-size:12px; }
+.history-table th { color:#777; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
+.history-table td { padding:6px 7px; border-bottom:1px solid #161616; color:#aaa; font-size:12px; }
 .history-table td.win { color:#00d084; font-weight:700; }
 .history-table td.loss { color:#ff4444; font-weight:700; }
 .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; }
 .badge.long { background:#00d08422; color:#00d084; }
 .badge.short { background:#ff444422; color:#ff6666; }
-.exit-tag { color:#444; font-size:10px; }
-.empty-history { color:#444; font-size:12px; text-align:center; padding:16px 0; }
+.exit-tag { color:#777; font-size:10px; }
+.empty-history { color:#777; font-size:12px; text-align:center; padding:16px 0; }
 
 .toast { position:fixed; bottom:24px; right:24px; background:#1e2e1e; border:1px solid #00d08455; color:#00d084; padding:10px 16px; border-radius:8px; font-size:13px; font-weight:700; opacity:0; transition:opacity .3s; pointer-events:none; z-index:99; }
 .toast.err { background:#2e1e1e; border-color:#ff444455; color:#ff6666; }
@@ -211,6 +217,9 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
     <div class="balance-label">Paper Balance</div>
     <div class="balance-val" id="balanceVal">$10,000.00</div>
     <div class="balance-pnl" id="balancePnl"></div>
+    <div class="balance-equity-row"><span class="balance-eq-lbl">Open P&amp;L</span><span class="balance-eq-val" id="balanceOpenPnl">—</span></div>
+    <div class="balance-equity-row"><span class="balance-eq-lbl">Equity</span><span class="balance-eq-val" id="balanceTotalEquity">—</span></div>
+    <div class="balance-equity-row"><span class="balance-eq-lbl">Deployed</span><span class="balance-eq-val neu" id="balanceDeployed">—</span></div>
   </div>
 </div>
 
@@ -250,7 +259,7 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
         <div class="dual">
           <input class="pi" id="entryPrice" type="text" value="market">
           <span class="sep">|</span>
-          <input class="pct" type="text" value="market" readonly style="color:#333;">
+          <input class="pct" type="text" value="market" readonly style="color:#666;">
         </div>
       </div>
       <div class="field"><label>Stop Loss</label>
@@ -311,6 +320,9 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
       <div class="panel-title">Scorecard</div>
       <div class="scorecard">
         <div class="score-item"><div class="score-label">Balance</div><div class="score-val" id="scBalance">$10,000</div><div class="score-sub" id="scPnl">—</div></div>
+        <div class="score-item"><div class="score-label">Open P&amp;L</div><div class="score-val" id="scOpenPnl">—</div><div class="score-sub">Unrealized</div></div>
+        <div class="score-item"><div class="score-label">Total Equity</div><div class="score-val" id="scTotalEquity">—</div><div class="score-sub">Bal + Open P&amp;L</div></div>
+        <div class="score-item"><div class="score-label">Deployed</div><div class="score-val blue" id="scDeployed">—</div><div class="score-sub">Margin in use</div></div>
         <div class="score-item"><div class="score-label">Win Rate</div><div class="score-val green" id="scWinRate">—</div><div class="score-sub" id="scWinSub">0 trades</div></div>
         <div class="score-item"><div class="score-label">Avg R:R</div><div class="score-val blue" id="scRR">—</div><div class="score-sub">Target ≥ 2.0</div></div>
         <div class="score-item"><div class="score-label">Streak</div><div class="score-val" id="scStreak">—</div><div class="score-sub" id="scStreakSub"></div></div>
@@ -488,7 +500,7 @@ function renderQueue() {
       <td class="q-dist ${distCls}">${distTxt}</td>
       <td class="cond">${(q.entry_condition ?? '').slice(0, 55)}${(q.entry_condition ?? '').length > 55 ? '…' : ''}</td>
       <td>${statusBadge}</td>
-      <td style="color:#555;">${daysAgo}d</td>
+      <td style="color:#888;">${daysAgo}d</td>
       <td style="white-space:nowrap;">${actions}</td>
     </tr>`;
   }).join('');
@@ -559,15 +571,44 @@ function renderState() {
   if (!appState) return;
   const sc = appState.scorecard;
 
+  // Open P&L + Total Equity + Deployed Margin (computed from live open trades)
+  const openPnl = (appState.open_trades || []).reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+  const totalEquity = sc.balance + openPnl;
+  const deployed = (appState.open_trades || []).reduce((sum, t) => sum + (t.margin_usd ?? 0), 0);
+
   // Balance
   document.getElementById('balanceVal').textContent = fmt(sc.balance);
   const pnlEl = document.getElementById('balancePnl');
   pnlEl.textContent = fmtPnl(sc.pnl_total) + ' (' + fmtPct(sc.pnl_pct) + ')';
   pnlEl.className = 'balance-pnl ' + (sc.pnl_total >= 0 ? 'up' : 'dn');
 
+  // Header — Open P&L
+  const hOpenEl = document.getElementById('balanceOpenPnl');
+  hOpenEl.textContent = openPnl !== 0 ? fmtPnl(openPnl) : '—';
+  hOpenEl.className = 'balance-eq-val ' + (openPnl > 0 ? 'up' : openPnl < 0 ? 'dn' : 'neu');
+
+  // Header — Total Equity
+  const hEquityEl = document.getElementById('balanceTotalEquity');
+  hEquityEl.textContent = fmt(totalEquity);
+  hEquityEl.className = 'balance-eq-val neu';
+
   // Scorecard
   document.getElementById('scBalance').textContent = fmt(sc.balance, 0);
   document.getElementById('scPnl').textContent = fmtPnl(sc.pnl_total);
+
+  // Scorecard — Open P&L
+  const scOpenEl = document.getElementById('scOpenPnl');
+  scOpenEl.textContent = openPnl !== 0 ? fmtPnl(openPnl) : '—';
+  scOpenEl.className = 'score-val ' + (openPnl > 0 ? 'green' : openPnl < 0 ? 'red' : '');
+
+  // Scorecard — Total Equity
+  document.getElementById('scTotalEquity').textContent = fmt(totalEquity, 0);
+
+  // Scorecard — Deployed Margin
+  document.getElementById('scDeployed').textContent = deployed > 0 ? fmt(deployed, 0) : '—';
+
+  // Header — Deployed Margin
+  document.getElementById('balanceDeployed').textContent = deployed > 0 ? fmt(deployed) : '—';
   document.getElementById('scWinRate').textContent = sc.total > 0 ? sc.win_rate + '%' : '—';
   document.getElementById('scWinSub').textContent = sc.wins + ' / ' + sc.total + ' trades';
   document.getElementById('scRR').textContent = sc.avg_rr > 0 ? sc.avg_rr : '—';
@@ -599,7 +640,7 @@ function renderState() {
           <span class="trade-lev">${t.leverage}×</span>
           ${t.tp1_hit ? `<span class="tp1-badge">TP1 ✓ <span style="color:#00d084">${fmtPnl(t.tp1_pnl)}</span></span>` : ''}
           ${t.conviction ? `<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:${t.conviction==='HIGH'?'#7c4d00':'#3a3a00'};color:${t.conviction==='HIGH'?'#ffaa00':'#cccc00'}">${t.conviction}</span>` : ''}
-          <span style="font-size:10px;color:#555;margin-right:2px;">${t.tp1_hit ? 'Unreal.' : 'P&L'}</span><span class="trade-pnl ${pnl < 0 ? 'neg' : ''}">${fmtPnl(pnl)}</span>
+          <span style="font-size:10px;color:#888;margin-right:2px;">${t.tp1_hit ? 'Unreal.' : 'P&L'}</span><span class="trade-pnl ${pnl < 0 ? 'neg' : ''}">${fmtPnl(pnl)}</span>
           <button class="close-btn" onclick="closeTrade('${t.id}')">Close</button>
         </div>
         <div class="trade-levels">
@@ -607,10 +648,10 @@ function renderState() {
           <span class="lv">Now <span class="ev">${t.current_price ? fmt(t.current_price) : '—'}</span></span>
           <span class="lv">Margin <span class="ev">$${t.margin_usd.toLocaleString()}</span></span>
           <span class="lv">Stop <span class="sv">${fmt(t.stop_price)}</span></span>
-          <span class="lv">TP1 <span class="t1v">${fmt(t.tp1_price)}</span> <span style="color:#333">(${t.tp1_split}%)</span></span>
-          <span class="lv">TP2 <span class="t2v">${fmt(t.tp2_price)}</span> <span style="color:#333">(${t.tp2_split}%)</span></span>
+          <span class="lv">TP1 <span class="t1v">${fmt(t.tp1_price)}</span> <span style="color:#777">(${t.tp1_split}%)</span></span>
+          <span class="lv">TP2 <span class="t2v">${fmt(t.tp2_price)}</span> <span style="color:#777">(${t.tp2_split}%)</span></span>
         </div>
-        ${t.source ? `<div style="font-size:10px;color:#444;margin-top:4px;">${t.card_title || ''} · ${t.source}</div>` : ''}
+        ${t.source ? `<div style="font-size:10px;color:#777;margin-top:4px;">${t.card_title || ''} · ${t.source}</div>` : ''}
       </div>`;
     }).join('');
   }

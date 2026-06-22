@@ -2,6 +2,7 @@ import { register } from '../router.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { exec } from 'child_process';
+import { networkInterfaces } from 'os';
 import * as data from '../../core/data.js';
 import * as chart from '../../core/chart.js';
 import {
@@ -412,10 +413,16 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
   startBot(() => state).catch(e => console.error('[Discord] Bot error:', e.message));
 
   // ── Start ──────────────────────────────────────────────────────
-  app.listen(port, () => {
-    const url = `http://localhost:${port}`;
-    console.error(`\n  Paper Trading Dashboard\n  ${url}\n`);
-    exec(`open "${url}" 2>/dev/null || xdg-open "${url}" 2>/dev/null || start "${url}"`, () => {});
+  app.listen(port, '0.0.0.0', () => {
+    const localUrl = `http://localhost:${port}`;
+    const nets = networkInterfaces();
+    const lanIp = Object.values(nets).flat().find(n => n.family === 'IPv4' && !n.internal)?.address;
+    const lanUrl = lanIp ? `http://${lanIp}:${port}` : null;
+    console.error(`\n  Paper Trading Dashboard`);
+    console.error(`  Local:   ${localUrl}`);
+    if (lanUrl) console.error(`  Network: ${lanUrl}  ← use this on iPhone`);
+    console.error('');
+    exec(`open "${localUrl}" 2>/dev/null || xdg-open "${localUrl}" 2>/dev/null || start "${localUrl}"`, () => {});
   });
 
   // Keep process alive

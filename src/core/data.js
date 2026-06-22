@@ -343,7 +343,9 @@ export async function getStudyValues() {
               if (items) {
                 for (var i = 0; i < items.length; i++) {
                   var item = items[i];
-                  if (item._value && item._value !== '∅' && item._title) values[item._title] = item._value;
+                  // _value may be a KO observable (function) — call it if so to get the live value
+                  var rawVal = typeof item._value === 'function' ? item._value() : item._value;
+                  if (rawVal && rawVal !== '∅' && item._title) values[item._title] = rawVal;
                 }
               }
             }

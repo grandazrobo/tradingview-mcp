@@ -86,7 +86,7 @@ function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_lo
     `**Generated:** ${now} NZT  `,
     `**Mode:** ${mode === 'execute' ? '✅ Executed' : '🔍 Dry run'}  `,
     `**Loaded:** ${loaded.length} trade(s)  `,
-    `**Queued:** ${(queued_loaded ?? []).length} setup(s)  `,
+    `**Queued:** ${(queued ?? []).length} setup(s)  `,
     `**Skipped (rules):** ${allSkipped.length}  `,
     `**Conflicts (already open):** ${conflicts.length}  `,
     ``,
@@ -119,6 +119,20 @@ function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_lo
     }
   }
 
+  // Queued setups in main cards table
+  for (const q of (queued ?? [])) {
+    const assessment = assessments?.get(q.card_title);
+    const iadss = iadssResults?.get(q.card_title);
+    const cp    = cpResults?.get(q.card_title);
+    const priceCol  = assessment?.current_price ? assessment.current_price.toLocaleString() : '—';
+    const statusCol = assessment?.status ?? '—';
+    const iadssCol  = iadss?.available ? `${iadss.emoji} ${iadss.score > 0 ? '+' : ''}${iadss.score}` : '—';
+    const cpCol     = cp?.available    ? `${cp.emoji} ${cp.score > 0 ? '+' : ''}${cp.score}`         : '—';
+    const isQueued  = (queued_loaded ?? []).some(ql => ql.card_title === q.card_title);
+    const action    = isQueued ? '⏳ Queued' : mode === 'dry_run' ? '⏳ (dry run)' : '⏳ Queued';
+    lines.push(`| ${q.card_title} | ${q.conviction ?? '—'} | ${priceCol} | ${statusCol} | ${iadssCol} | ${cpCol} | ✅ Queued | ${action} |`);
+  }
+
   // Cards skipped during parsing (failed rules)
   for (const s of allSkipped) {
     const dashIdx = s.indexOf(' — skipped');
@@ -133,13 +147,15 @@ function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_lo
     lines.push(``);
     lines.push(`## Queued Setups (conditional entry — monitoring)`);
     lines.push(``);
-    lines.push(`| Card | Entry Zone | Invalidation | Condition | Action |`);
-    lines.push(`|---|---|---|---|---|`);
+    lines.push(`| Card | Entry Zone | Distance | Invalidation | Condition | Action |`);
+    lines.push(`|---|---|---|---|---|---|`);
     for (const q of queued) {
       const queued_result = (queued_loaded ?? []).find(ql => ql.card_title === q.card_title);
-      const action = queued_result ? '⏳ Queued' : '— (dry run)';
+      const action = queued_result ? '⏳ Queued' : mode === 'dry_run' ? '⏳ (dry run)' : '⏳ Queued';
       const inval = q.invalidation_price ? `${q.invalidation_direction ?? ''} ${q.invalidation_price}`.trim() : '—';
-      lines.push(`| ${q.card_title} | ${q.entry_zone} | ${inval} | ${(q.entry_condition ?? '').slice(0, 60)} | ${action} |`);
+      const assessment = assessments?.get(q.card_title);
+      const distCol = assessment?.distance_pct != null ? `${assessment.distance_pct.toFixed(1)}%` : '—';
+      lines.push(`| ${q.card_title} | ${q.entry_zone} | ${distCol} | ${inval} | ${(q.entry_condition ?? '').slice(0, 60)} | ${action} |`);
     }
   }
 
@@ -189,7 +205,7 @@ async function handler(opts, positionals) {
     return { success: false, date, error: `No synthesis brief found for ${date}`, path: filePath };
   }
 
-  const { cards, queued: queuedCards = [], skipped, chart_unconfirmed } = parseBrief(filePath) ?? {};
+  let { cards, queued: queuedCards = [], skipped, chart_unconfirmed } = parseBrief(filePath) ?? {};
 
   if (!cards) {
     return { success: false, date, error: 'Failed to parse brief' };
@@ -217,6 +233,28 @@ async function handler(opts, positionals) {
     const price = await fetchBinancePrice(card.symbol);
     assessments.set(card.card_title, assessSetup(card, price));
   }
+
+  // Also fetch prices for parser-queued cards (for distance display in report/dashboard)
+  for (const card of queuedCards) {
+    const price = await fetchBinancePrice(card.symbol);
+    assessments.set(card.card_title, assessSetup({ ...card, entry_price: card.entry_zone }, price));
+  }
+
+  // Reroute PENDING+far active cards to queue — price hasn't reached us yet
+  const pendingFarAsQueued = [];
+  cards = cards.filter(card => {
+    const a = assessments.get(card.card_title);
+    if (a?.status === 'PENDING' && (a.distance_pct ?? 0) > 3) {
+      pendingFarAsQueued.push({
+        ...card,
+        entry_zone: card.entry_price,
+        entry_condition: `${a.distance_pct.toFixed(1)}% from entry — waiting for pullback to ${card.entry_price}`,
+      });
+      return false;
+    }
+    return true;
+  });
+  queuedCards = [...queuedCards, ...pendingFarAsQueued];
 
   // Ensure the 4-pane layout tab is active before reading indicator context
   try {
