@@ -59,6 +59,15 @@ function fmt(n) {
   return n >= 1000 ? n.toLocaleString('en-US') : String(n);
 }
 
+// Leverage scaling based on IADSS score — only for tiers validated in historical analysis.
+// BTC (20×) and 10× alts are not in the table — they stay unchanged.
+const LEVERAGE_SCALE_TABLE = { 3: 10, 4: 15, 5: 20 };
+
+function applyIADSSLeverage(leverage, iadss) {
+  if (!iadss?.available || iadss.score < 2) return leverage; // NEUTRAL or AGAINST — no change
+  return LEVERAGE_SCALE_TABLE[leverage] ?? leverage;
+}
+
 function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_loaded, conflicts, errors, mode, assessments, mtfContexts, iadssResults, cpResults }) {
   const now = new Date().toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland', hour12: false });
   const reportPath = join(dirname(filePath), `${date}_chart-hackers-load-report.md`);
@@ -284,6 +293,17 @@ async function handler(opts, positionals) {
       console.error(`      CP:    ${cp.emoji} ${cp.rating} (${cp.score > 0 ? '+' : ''}${cp.score})`);
     } else {
       console.error(`      — TV not available, skipping MTF context`);
+    }
+  }
+
+  // Apply IADSS-based leverage scaling (CONFIRMED/PARTIAL score ≥ 2 only)
+  for (const card of cards) {
+    const iadss = iadssResults.get(card.card_title);
+    const scaled = applyIADSSLeverage(card.leverage, iadss);
+    if (scaled !== card.leverage) {
+      const label = card.card_title.split('—')[0].trim();
+      console.error(`  ↑ ${label}: leverage ${card.leverage}× → ${scaled}× (IADSS ${iadss.rating} +${iadss.score})`);
+      card.leverage = scaled;
     }
   }
 
