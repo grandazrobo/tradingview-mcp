@@ -373,11 +373,25 @@ async function handler(opts, positionals) {
     }
 
     try {
-      const result = await postTrade(card);
+      const a = assessments.get(card.card_title);
+      const isLong = card.direction === 'long';
+      const atOrBetter = a?.current_price != null && (
+        (isLong && a.current_price <= card.entry_price) ||
+        (!isLong && a.current_price >= card.entry_price)
+      );
+      const tradeCard = atOrBetter
+        ? { ...card, entry_price: a.current_price }
+        : card;
+
+      const result = await postTrade(tradeCard);
       if (result.success) {
         loaded.push({ card_title: card.card_title, symbol: card.symbol, trade_id: result.trade?.id });
-        openPositions.add(key); // prevent double-entry within same brief
-        console.error(`  ✓ ${card.card_title} — loaded (${card.symbol} ${card.direction})`);
+        openPositions.add(key);
+        if (atOrBetter && a.current_price !== card.entry_price) {
+          console.error(`  ✓ ${card.card_title} — loaded at market ${a.current_price} (better than limit ${card.entry_price}, ${card.symbol} ${card.direction})`);
+        } else {
+          console.error(`  ✓ ${card.card_title} — loaded (${card.symbol} ${card.direction})`);
+        }
       } else {
         errors.push({ card_title: card.card_title, error: result.error });
         console.error(`  ✗ ${card.card_title} — API error: ${result.error}`);

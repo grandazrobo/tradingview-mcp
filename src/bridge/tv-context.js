@@ -131,9 +131,21 @@ export function assessSetup(card, currentPrice) {
   const distancePct = ((price - entry_price) / entry_price) * 100;
   const absPct = Math.abs(distancePct);
 
-  // Is price on the wrong side of entry (moved away in the wrong direction)?
-  // Long pullback: we buy when price drops to entry. Wrong side = price fell BELOW entry (missed the bounce).
-  // Short retest: we sell when price rises to entry. Wrong side = price pumped ABOVE entry (missed the top).
+  // Price is at or better than entry — execute at market for a better fill.
+  // Long: price at or below entry (cheaper). Short: price at or above entry (higher sell).
+  const atOrBetter = (isLong && price <= entry_price) || (!isLong && price >= entry_price);
+
+  if (atOrBetter) {
+    return {
+      status: 'AT ENTRY',
+      current_price: price,
+      distance_pct: absPct,
+      note: `Price ${price.toLocaleString()} is at or better than entry ${entry_price.toLocaleString()} — execute at market`,
+      action: `Place ${direction.toUpperCase()} at market`,
+    };
+  }
+
+  // Is price on the wrong side of entry (moved away too far in the wrong direction)?
   const wrongSide = isLong ? distancePct < -2 : distancePct > 2;
 
   if (absPct <= 0.5) {
