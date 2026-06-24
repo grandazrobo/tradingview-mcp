@@ -249,15 +249,15 @@ async function handler(opts, positionals) {
     assessments.set(card.card_title, assessSetup({ ...card, entry_price: card.entry_zone }, price));
   }
 
-  // Reroute PENDING+far active cards to queue — price hasn't reached us yet
+  // Reroute all PENDING active cards to queue — price hasn't reached entry yet
   const pendingFarAsQueued = [];
   cards = cards.filter(card => {
     const a = assessments.get(card.card_title);
-    if (a?.status === 'PENDING' && (a.distance_pct ?? 0) > 3) {
+    if (a?.status === 'PENDING') {
       pendingFarAsQueued.push({
         ...card,
         entry_zone: card.entry_price,
-        entry_condition: `${a.distance_pct.toFixed(1)}% from entry — waiting for pullback to ${card.entry_price}`,
+        entry_condition: `${a.distance_pct?.toFixed(1) ?? '?'}% from entry — waiting for pullback to ${card.entry_price}`,
       });
       return false;
     }
