@@ -110,6 +110,7 @@ function get(map, ...names) {
 // "BTCUSDT.P on KuCoin Futures, 20× ..." → "KUCOIN:BTCUSDT"
 function mapSymbol(raw) {
   if (!raw) return null;
+  if (/^n\/a/i.test(raw.trim())) return null;
   const kucoin = raw.match(/([A-Z0-9]+USDT)\.P/i);
   if (kucoin) return `KUCOIN:${kucoin[1].toUpperCase()}`;
   // Bare ticker like "HYPE" or "HYPEUSDT"
@@ -180,6 +181,15 @@ export function parseBrief(filePath) {
     const entryRaw = get(fields, 'best entry', 'entry zone', 'entry trigger', 'retest', 'entry');
     if (!entryRaw) {
       skipped.push(`${title} — skipped (no entry field)`);
+      continue;
+    }
+
+    // Skip non-ATP instruments (stocks, commodities, forex) flagged in title or ATP fit
+    const atpFitSkip = get(fields, 'atp fit');
+    const notAtp = /not\s+atp|skip\s+for\s+atp/i.test(title) ||
+                   /not\s+atp|skip\s+for\s+atp|stock\s*[—-]\s*skip|equity.*skip|not\s+on\s+kucoin/i.test(atpFitSkip ?? '');
+    if (notAtp) {
+      skipped.push(`${title} — skipped (not an ATP instrument)`);
       continue;
     }
 
