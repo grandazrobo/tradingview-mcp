@@ -21,6 +21,7 @@ or
 
 export async function checkTrade(card, assessment, iadss, cp, mtfContext, openTrades) {
   const context = buildContext(card, assessment, iadss, cp, mtfContext, openTrades);
+  let text;
   try {
     const msg = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -28,13 +29,14 @@ export async function checkTrade(card, assessment, iadss, cp, mtfContext, openTr
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify(context) }],
     });
-    const text = msg.content[0]?.text?.trim();
+    text = msg.content[0]?.text?.trim();
     const parsed = JSON.parse(text);
     if (parsed.hold === true && typeof parsed.reason === 'string') {
       return { hold: true, reason: parsed.reason };
     }
     return { pass: true };
-  } catch {
+  } catch (e) {
+    if (e instanceof SyntaxError) console.error('[trade-checker] unexpected model response:', text);
     return { pass: true };
   }
 }
@@ -71,7 +73,7 @@ function buildContext(card, assessment, iadss, cp, mtfContext, openTrades) {
       signals: cp.signals,
       warnings: cp.warnings,
     } : null,
-    mtf_summary: mtfContext ? summarizeMTF(mtfContext) : null,
+    mtf_summary: mtfContext?.panes?.length ? summarizeMTF(mtfContext) : null,
     open_positions: (openTrades ?? []).map(t => ({
       symbol: t.symbol,
       direction: t.direction,
