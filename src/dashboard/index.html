@@ -178,6 +178,18 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
 .q-dist.far { color:#888; }
 .empty-queue { color:#777; font-size:12px; text-align:center; padding:16px 0; }
 
+/* ── Held Trades ── */
+.held-table { width:100%; border-collapse:collapse; }
+.held-table th { color:#777; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
+.held-table td { padding:6px 7px; border-bottom:1px solid #161616; color:#aaa; font-size:11px; vertical-align:top; }
+.held-table td.sym { color:#fff; font-weight:700; white-space:nowrap; }
+.held-table td.reason { max-width:300px; color:#ffaa00; font-size:11px; }
+.held-badge { display:inline-block; background:#2e1a00; color:#ffaa00; font-size:10px; font-weight:700; padding:1px 5px; border-radius:3px; margin-left:6px; }
+.held-btn { background:#1a1a1a; border:1px solid #333; color:#888; border-radius:4px; padding:2px 7px; font-family:inherit; font-size:10px; cursor:pointer; margin-right:4px; }
+.held-btn.release { border-color:#00d08444; color:#00d084; }
+.held-btn.discard { border-color:#ff444433; color:#ff6666; }
+.empty-held { color:#777; font-size:12px; text-align:center; padding:16px 0; }
+
 /* ── History ── */
 .history-table { width:100%; border-collapse:collapse; }
 .history-table th { color:#777; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding:5px 7px; text-align:left; border-bottom:1px solid #1e1e1e; }
@@ -332,6 +344,17 @@ body { background: #0d0d0d; color: #e0e0e0; font-family: 'SF Mono','Fira Code',m
     <div class="panel">
       <div class="panel-title">Active Trades</div>
       <div id="activeTrades"><div class="no-trades">No open trades</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Held Trades <span id="heldBadge"></span></div>
+      <div id="heldWrap">
+        <table class="held-table">
+          <thead><tr><th>Symbol</th><th>Dir</th><th>Entry</th><th>Stop</th><th>Lev</th><th>Claude's Reason</th><th>Held</th><th>Actions</th></tr></thead>
+          <tbody id="heldBody"></tbody>
+        </table>
+        <div class="empty-held" id="emptyHeld">No held trades</div>
+      </div>
     </div>
 
     <div class="panel">
@@ -532,6 +555,75 @@ setInterval(poll, 3000);
 setInterval(fetchQueue, 30000);
 poll();
 fetchQueue();
+
+// ── Held Trades ───────────────────────────────────────────────
+let heldState = [];
+
+async function fetchHeld() {
+  try {
+    const r = await fetch('/api/held');
+    const data = await r.json();
+    heldState = data.held_trades ?? [];
+    renderHeld();
+  } catch { /* server may be starting */ }
+}
+
+function renderHeld() {
+  const tbody = document.getElementById('heldBody');
+  const emptyEl = document.getElementById('emptyHeld');
+  const badge = document.getElementById('heldBadge');
+  if (!heldState || heldState.length === 0) {
+    tbody.innerHTML = '';
+    emptyEl.style.display = 'block';
+    badge.textContent = '';
+    badge.className = '';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  badge.textContent = heldState.length;
+  badge.className = 'held-badge';
+  tbody.innerHTML = heldState.map(h => {
+    const { card, reason, held_at, id } = h;
+    const ticker = card.symbol?.split(':').pop() ?? card.symbol;
+    const dirClass = card.direction === 'long' ? 'long' : 'short';
+    const hoursAgo = held_at ? Math.floor((Date.now() - new Date(held_at)) / 3600000) : 0;
+    const timeLabel = hoursAgo < 1 ? '<1h ago' : `${hoursAgo}h ago`;
+    return `<tr>
+      <td class="sym">${ticker}</td>
+      <td><span class="badge ${dirClass}">${(card.direction ?? '').toUpperCase()}</span></td>
+      <td>${card.entry_price?.toLocaleString() ?? '—'}</td>
+      <td>${card.stop_price?.toLocaleString() ?? '—'}</td>
+      <td>${card.leverage ?? '—'}×</td>
+      <td class="reason">${reason ?? '—'}</td>
+      <td>${timeLabel}</td>
+      <td>
+        <button class="held-btn release" onclick="releaseHeldTrade('${id}')">Release</button>
+        <button class="held-btn discard" onclick="discardHeldTrade('${id}')">Discard</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function releaseHeldTrade(id) {
+  try {
+    const r = await fetch(`/api/held/${id}/release`, { method: 'POST', headers: {'Content-Type':'application/json'} });
+    const d = await r.json();
+    if (d.success) { showToast('Trade released to open'); fetchHeld(); fetchState(); }
+    else showToast('Error: ' + (d.error ?? 'unknown'), true);
+  } catch { showToast('Request failed', true); }
+}
+
+async function discardHeldTrade(id) {
+  try {
+    const r = await fetch(`/api/held/${id}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.success) { showToast('Held trade discarded'); fetchHeld(); }
+    else showToast('Error: ' + (d.error ?? 'unknown'), true);
+  } catch { showToast('Request failed', true); }
+}
+
+setInterval(fetchHeld, 30000);
+fetchHeld();
 
 // ── Render ───────────────────────────────────────────────────────
 function fmt(n, decimals = 2) {
