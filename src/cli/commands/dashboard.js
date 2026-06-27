@@ -9,6 +9,7 @@ import {
   loadState, resetState, openTrade, closeTrade, hitTp1,
   calcLivePnl, calcScorecard, saveState,
   queueTrade, removeQueued, updateQueued, activateQueued, invalidateQueued,
+  holdTrade, releaseHeld, removeHeld,
 } from '../../dashboard/state.js';
 import {
   notifyTradeOpen, notifyTp1Hit, notifyTradeClose,
@@ -374,6 +375,30 @@ async function startDashboard({ port = 3333, reset = false } = {}) {
     const updated = updateQueued(state, req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: 'Queued trade not found' });
     res.json({ success: true, queued: updated });
+  });
+
+  app.get('/api/held', (_req, res) => {
+    res.json({ held_trades: state.held_trades ?? [] });
+  });
+
+  app.post('/api/held', (req, res) => {
+    const { card, reason } = req.body;
+    if (!card || !reason) return res.status(400).json({ error: 'card and reason required' });
+    const held = holdTrade(state, card, reason);
+    res.json({ success: true, held });
+  });
+
+  app.post('/api/held/:id/release', (req, res) => {
+    const trade = releaseHeld(state, req.params.id);
+    if (!trade) return res.status(404).json({ error: 'Held trade not found' });
+    notifyTradeOpen(trade);
+    res.json({ success: true, trade });
+  });
+
+  app.delete('/api/held/:id', (req, res) => {
+    const removed = removeHeld(state, req.params.id);
+    if (!removed) return res.status(404).json({ error: 'Held trade not found' });
+    res.json({ success: true, removed });
   });
 
   app.post('/api/symbol', async (req, res) => {
