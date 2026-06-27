@@ -265,6 +265,17 @@ async function handler(opts, positionals) {
   });
   queuedCards = [...queuedCards, ...pendingFarAsQueued];
 
+  // Skip any card whose stop is already hit — don't load it at all
+  cards = cards.filter(card => {
+    const a = assessments.get(card.card_title);
+    if (a?.status === 'STOP HIT') {
+      skipped.push(`${card.card_title} — skipped (stop already hit at load time)`);
+      console.error(`  ✗ ${card.card_title} — stop already hit at load time, skipping`);
+      return false;
+    }
+    return true;
+  });
+
   // Ensure the 4-pane layout tab is active before reading indicator context
   try {
     const switched = await switchTabByName({ name: '4-pane' });
