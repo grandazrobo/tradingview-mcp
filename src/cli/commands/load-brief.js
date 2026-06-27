@@ -412,6 +412,7 @@ async function handler(opts, positionals) {
         const result = await postHeld(card, checkResult.reason);
         if (result.success) {
           held.push({ card_title: card.card_title, symbol: card.symbol, held_id: result.held?.id, reason: checkResult.reason });
+          openPositions.add(key);
           console.error(`  ⏸ ${card.card_title} — held: ${checkResult.reason}`);
         } else {
           errors.push({ card_title: card.card_title, error: `hold failed: ${result.error}` });

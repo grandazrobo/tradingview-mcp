@@ -25,7 +25,7 @@ export async function checkTrade(card, assessment, iadss, cp, mtfContext, openTr
   try {
     const msg = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 128,
+      max_tokens: 256,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: JSON.stringify(context) }],
     });
@@ -36,7 +36,11 @@ export async function checkTrade(card, assessment, iadss, cp, mtfContext, openTr
     }
     return { pass: true };
   } catch (e) {
-    if (e instanceof SyntaxError) console.error('[trade-checker] unexpected model response:', text);
+    if (e instanceof SyntaxError) {
+      console.error('[trade-checker] bad JSON from model:', text);
+    } else {
+      console.error('[trade-checker] API error (failing open):', e.message);
+    }
     return { pass: true };
   }
 }
