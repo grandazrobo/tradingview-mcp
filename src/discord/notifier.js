@@ -99,10 +99,11 @@ export function notifyTradeClose(trade) {
   return send(CH.pnl, { embeds: [pnlEmbed] });
 }
 
-export function notifyBriefLoaded({ date, loaded, skipped_parse, conflicts, top_trade, chart_unconfirmed }) {
+export function notifyBriefLoaded({ date, loaded, skipped_parse, conflicts, held, top_trade, chart_unconfirmed }) {
   const fields = [
     { name: 'Top setup',     value: top_trade || '—',           inline: false },
     { name: 'Loaded',        value: String(loaded),             inline: true },
+    { name: 'Held',          value: String(held ?? 0),          inline: true },
     { name: 'Skipped',       value: String(skipped_parse),      inline: true },
     { name: 'Conflicts',     value: String(conflicts),          inline: true },
   ];

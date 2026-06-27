@@ -412,13 +412,15 @@ async function handler(opts, positionals) {
         const result = await postHeld(card, checkResult.reason);
         if (result.success) {
           held.push({ card_title: card.card_title, symbol: card.symbol, held_id: result.held?.id, reason: checkResult.reason });
+          console.error(`  ⏸ ${card.card_title} — held: ${checkResult.reason}`);
         } else {
           errors.push({ card_title: card.card_title, error: `hold failed: ${result.error}` });
+          console.error(`  ✗ ${card.card_title} — hold POST failed: ${result.error}`);
         }
       } catch (e) {
         errors.push({ card_title: card.card_title, error: `hold request failed: ${e.message}` });
+        console.error(`  ✗ ${card.card_title} — hold request failed: ${e.message}`);
       }
-      console.error(`  ⏸ ${card.card_title} — held: ${checkResult.reason}`);
       continue;
     }
 
@@ -491,6 +493,7 @@ async function handler(opts, positionals) {
     trade_count: loaded.length,
     queued_count: queued_loaded.length,
     conflicts: conflicts.length,
+    held_count: held.length,
     errors: errors.length,
   };
   saveLog(log);
@@ -505,6 +508,7 @@ async function handler(opts, positionals) {
     loaded: loaded.length,
     skipped_parse: skipped.length,
     conflicts: conflicts.length,
+    held: held.length,
     top_trade: topDesc,
     chart_unconfirmed,
   });
