@@ -10,6 +10,7 @@ const DEFAULT_STATE = {
   balance: 10000,
   open_trades: [],
   queued_trades: [],
+  held_trades: [],
   history: [],
   pairs: ['KUCOIN:SOLUSDT', 'KUCOIN:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:AVAXUSDT'],
   active_mode: null,
@@ -21,6 +22,7 @@ export function loadState() {
     const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
     if (!('active_mode' in state)) state.active_mode = null;
     if (!('queued_trades' in state)) state.queued_trades = [];
+    if (!('held_trades' in state)) state.held_trades = [];
     return state;
   } catch {
     return structuredClone(DEFAULT_STATE);
@@ -266,4 +268,62 @@ export function calcScorecard(state) {
     avg_rr,
     streak,
   };
+}
+
+export function holdTrade(state, card, reason) {
+  if (!state.held_trades) state.held_trades = [];
+  const held = {
+    id: randomUUID(),
+    card,
+    reason,
+    held_at: new Date().toISOString(),
+  };
+  state.held_trades.push(held);
+  saveState(state);
+  return held;
+}
+
+export function releaseHeld(state, id) {
+  if (!state.held_trades) return null;
+  const idx = state.held_trades.findIndex(h => h.id === id);
+  if (idx === -1) return null;
+  const [held] = state.held_trades.splice(idx, 1);
+  const { card } = held;
+  const trade = {
+    id: randomUUID(),
+    symbol: card.symbol,
+    direction: card.direction,
+    entry_price: card.entry_price,
+    stop_price: card.stop_price,
+    tp1_price: card.tp1_price,
+    tp1_split: card.tp1_split ?? 30,
+    tp2_price: card.tp2_price,
+    tp2_split: card.tp2_split ?? 70,
+    margin_usd: card.margin_usd,
+    leverage: card.leverage,
+    position_size: card.margin_usd * card.leverage,
+    conviction: card.conviction ?? null,
+    source: card.source ?? null,
+    card_title: card.card_title ?? null,
+    opened_at: new Date().toISOString(),
+    status: 'open',
+    tp1_hit: false,
+    tp1_pnl: 0,
+    pnl: 0,
+    exit_price: null,
+    exit_reason: null,
+    closed_at: null,
+  };
+  state.open_trades.push(trade);
+  saveState(state);
+  return trade;
+}
+
+export function removeHeld(state, id) {
+  if (!state.held_trades) return null;
+  const idx = state.held_trades.findIndex(h => h.id === id);
+  if (idx === -1) return null;
+  const [removed] = state.held_trades.splice(idx, 1);
+  saveState(state);
+  return removed;
 }
