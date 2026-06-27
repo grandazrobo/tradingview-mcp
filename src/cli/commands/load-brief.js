@@ -8,6 +8,7 @@ import { switchTabByName } from '../../core/tab.js';
 import { assessIADSS } from '../../bridge/iadss-rules.js';
 import { assessChartPrime } from '../../bridge/chartprime-rules.js';
 import { notifyBriefLoaded } from '../../discord/notifier.js';
+import { checkTrade } from '../../bridge/trade-checker.js';
 
 const LOADED_LOG = join(homedir(), '.tv-atp-loaded-briefs.json');
 const DASH_URL = 'http://localhost:3333';
@@ -54,6 +55,15 @@ async function postQueuedTrade(card) {
   return res.json();
 }
 
+async function postHeld(card, reason) {
+  const res = await fetch(`${DASH_URL}/api/held`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ card, reason }),
+  });
+  return res.json();
+}
+
 function fmt(n) {
   if (n === null || n === undefined) return '—';
   return n >= 1000 ? n.toLocaleString('en-US') : String(n);
@@ -68,7 +78,7 @@ function applyIADSSLeverage(leverage, iadss) {
   return LEVERAGE_SCALE_TABLE[leverage] ?? leverage;
 }
 
-function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_loaded, conflicts, errors, mode, assessments, mtfContexts, iadssResults, cpResults }) {
+function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_loaded, conflicts, errors, held = [], mode, assessments, mtfContexts, iadssResults, cpResults }) {
   const now = new Date().toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland', hour12: false });
   const reportPath = join(dirname(filePath), `${date}_chart-hackers-load-report.md`);
 
@@ -76,6 +86,7 @@ function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_lo
   const loadedTitles = new Set(loaded.map(l => l.card_title));
   const conflictMap = new Map(conflicts.map(c => [c.card_title, c.reason]));
   const errorMap = new Map(errors.map(e => [e.card_title, e.error]));
+  const heldMap = new Map(held.map(h => [h.card_title, h.reason]));
 
   // All cards that passed parsing
   const allParsed = [...cards];
@@ -96,6 +107,7 @@ function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_lo
     `**Mode:** ${mode === 'execute' ? '✅ Executed' : '🔍 Dry run'}  `,
     `**Loaded:** ${loaded.length} trade(s)  `,
     `**Queued:** ${(queued ?? []).length} setup(s)  `,
+    `**Held (checker):** ${held.length}  `,
     `**Skipped (rules):** ${allSkipped.length}  `,
     `**Conflicts (already open):** ${conflicts.length}  `,
     ``,
@@ -123,6 +135,8 @@ function writeReport({ date, filePath, cards, queued, skipped, loaded, queued_lo
       lines.push(`| ${card.card_title} | ${conviction} | ${priceCol} | ${statusCol} | ${iadssCol} | ${cpCol} | ✅ Pass | ⚠️ ${conflictMap.get(card.card_title)} |`);
     } else if (errorMap.has(card.card_title)) {
       lines.push(`| ${card.card_title} | ${conviction} | ${priceCol} | ${statusCol} | ${iadssCol} | ${cpCol} | ✅ Pass | ❌ Error: ${errorMap.get(card.card_title)} |`);
+    } else if (heldMap.has(card.card_title)) {
+      lines.push(`| ${card.card_title} | ${conviction} | ${priceCol} | ${statusCol} | ${iadssCol} | ${cpCol} | ⏸ Held | ${heldMap.get(card.card_title)} |`);
     } else {
       lines.push(`| ${card.card_title} | ${conviction} | ${priceCol} | ${statusCol} | ${iadssCol} | ${cpCol} | ✅ Pass | — (dry run) |`);
     }
@@ -357,7 +371,7 @@ async function handler(opts, positionals) {
       for (const s of skipped) console.error(`    ✗ ${s}`);
     }
     console.error('');
-    const reportPath = writeReport({ date, filePath, cards, queued: queuedCards, skipped, loaded: [], queued_loaded: [], conflicts: [], errors: [], mode: 'dry_run', assessments, mtfContexts, iadssResults, cpResults });
+    const reportPath = writeReport({ date, filePath, cards, queued: queuedCards, skipped, loaded: [], queued_loaded: [], conflicts: [], errors: [], held: [], mode: 'dry_run', assessments, mtfContexts, iadssResults, cpResults });
     console.error(`  Report written: ${reportPath}\n`);
     return { ...summary, mode: 'dry_run', queued: queuedCards.length, report: reportPath };
   }
@@ -373,6 +387,7 @@ async function handler(opts, positionals) {
   const loaded = [];
   const conflicts = [];
   const errors = [];
+  const held = [];
 
   for (const card of cards) {
     const base = baseOf(card.symbol);
@@ -380,6 +395,30 @@ async function handler(opts, positionals) {
     if (openPositions.has(key)) {
       conflicts.push({ card_title: card.card_title, symbol: card.symbol, reason: `${base} ${card.direction} already open — skipped` });
       console.error(`  ⚠ ${card.card_title} — ${base} ${card.direction} already open, skipping`);
+      continue;
+    }
+
+    // Pre-trade sanity check
+    const checkResult = await checkTrade(
+      card,
+      assessments.get(card.card_title),
+      iadssResults.get(card.card_title),
+      cpResults.get(card.card_title),
+      mtfContexts.get(card.card_title) ?? null,
+      openTrades,
+    );
+    if (checkResult.hold) {
+      try {
+        const result = await postHeld(card, checkResult.reason);
+        if (result.success) {
+          held.push({ card_title: card.card_title, symbol: card.symbol, held_id: result.held?.id, reason: checkResult.reason });
+        } else {
+          errors.push({ card_title: card.card_title, error: `hold failed: ${result.error}` });
+        }
+      } catch (e) {
+        errors.push({ card_title: card.card_title, error: `hold request failed: ${e.message}` });
+      }
+      console.error(`  ⏸ ${card.card_title} — held: ${checkResult.reason}`);
       continue;
     }
 
@@ -470,7 +509,7 @@ async function handler(opts, positionals) {
     chart_unconfirmed,
   });
 
-  const reportPath = writeReport({ date, filePath, cards, queued: queuedCards, skipped, loaded, queued_loaded, conflicts, errors, mode: 'execute', assessments, mtfContexts, iadssResults, cpResults });
+  const reportPath = writeReport({ date, filePath, cards, queued: queuedCards, skipped, loaded, queued_loaded, conflicts, errors, held, mode: 'execute', assessments, mtfContexts, iadssResults, cpResults });
   console.error(`\n  Report written: ${reportPath}`);
 
   return {
@@ -479,6 +518,7 @@ async function handler(opts, positionals) {
     mode: 'execute',
     loaded,
     queued: queued_loaded,
+    held,
     conflicts,
     errors,
     skipped_parse: skipped,
