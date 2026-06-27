@@ -557,6 +557,10 @@ poll();
 fetchQueue();
 
 // ── Held Trades ───────────────────────────────────────────────
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 let heldState = [];
 
 async function fetchHeld() {
@@ -589,12 +593,12 @@ function renderHeld() {
     const hoursAgo = held_at ? Math.floor((Date.now() - new Date(held_at)) / 3600000) : 0;
     const timeLabel = hoursAgo < 1 ? '<1h ago' : `${hoursAgo}h ago`;
     return `<tr>
-      <td class="sym">${ticker}</td>
+      <td class="sym">${escHtml(ticker)}</td>
       <td><span class="badge ${dirClass}">${(card.direction ?? '').toUpperCase()}</span></td>
       <td>${card.entry_price?.toLocaleString() ?? '—'}</td>
       <td>${card.stop_price?.toLocaleString() ?? '—'}</td>
       <td>${card.leverage ?? '—'}×</td>
-      <td class="reason">${reason ?? '—'}</td>
+      <td class="reason">${escHtml(reason)}</td>
       <td>${timeLabel}</td>
       <td>
         <button class="held-btn release" onclick="releaseHeldTrade('${id}')">Release</button>
