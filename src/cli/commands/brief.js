@@ -8,7 +8,7 @@ import { fetchShowPosts } from '../../bridge/discord-fetcher.js';
 import { synthesizeBrief } from '../../bridge/brief-synthesizer.js';
 
 const SHOW_WINDOW_HOURS = 6;
-const MIN_TRANSCRIPT_SEGMENTS = 100;
+const MIN_TRANSCRIPT_SEGMENTS = 75;
 
 async function fetchData(opts) {
   const ytChannelId = process.env.CHART_HACKERS_YT_CHANNEL_ID;
