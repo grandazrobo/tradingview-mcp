@@ -8,6 +8,7 @@ import { fetchShowPosts } from '../../bridge/discord-fetcher.js';
 import { synthesizeBrief } from '../../bridge/brief-synthesizer.js';
 
 const SHOW_WINDOW_HOURS = 6;
+const MIN_TRANSCRIPT_SEGMENTS = 100;
 
 async function fetchData(opts) {
   const ytChannelId = process.env.CHART_HACKERS_YT_CHANNEL_ID;
@@ -15,38 +16,70 @@ async function fetchData(opts) {
 
   // Step 1: Find YouTube video
   let video;
+  let transcript = [];
+  let transcriptError = null;
+
   if (opts['video-id']) {
     video = {
       videoId: opts['video-id'],
       title: `(manual: ${opts['video-id']})`,
       publishedAt: opts['published-at'] ? new Date(opts['published-at']) : new Date(),
     };
+    try {
+      console.error(`  Fetching transcript for ${video.videoId}...`);
+      transcript = await fetchTranscript(video.videoId);
+      console.error(`  Transcript: ${transcript.length} segments`);
+    } catch (err) {
+      transcriptError = err.message;
+      console.error(`  Warning: transcript unavailable — ${err.message}`);
+    }
   } else {
     if (!ytChannelId) {
       throw new Error('CHART_HACKERS_YT_CHANNEL_ID not set — use --video-id to skip auto-detect');
     }
     console.error('  Searching YouTube channel for latest video...');
-    video = await findLatestVideo(ytChannelId, 36);
-    if (!video) {
+    const candidates = await findLatestVideo(ytChannelId, 36);
+    if (candidates.length === 0) {
       throw new Error('No video found in the last 36 hours — try again later or use --video-id');
     }
-    console.error(`  Found: "${video.title}" (${video.videoId}) published ${video.publishedAt.toISOString()}`);
+
+    // Walk candidates until we find one with a real transcript (not a promo/short).
+    for (const candidate of candidates) {
+      console.error(`  Trying: "${candidate.title}" (${candidate.videoId})`);
+      let segments = [];
+      try {
+        segments = await fetchTranscript(candidate.videoId);
+      } catch (err) {
+        console.error(`  Skipping — transcript error: ${err.message}`);
+        continue;
+      }
+      if (segments.length < MIN_TRANSCRIPT_SEGMENTS) {
+        console.error(`  Skipping — transcript too short (${segments.length} segments, need ${MIN_TRANSCRIPT_SEGMENTS}+)`);
+        transcriptError = `short transcript (${segments.length} segments)`;
+        continue;
+      }
+      video = candidate;
+      transcript = segments;
+      transcriptError = null;
+      console.error(`  Selected: "${video.title}" — ${transcript.length} segments`);
+      break;
+    }
+
+    if (!video) {
+      // No candidate had a full transcript — fall back to the top-ranked candidate
+      // and proceed with whatever transcript (or none) we have. Discord may suffice.
+      video = candidates[0];
+      console.error(`  Warning: no candidate had a full transcript — falling back to "${video.title}"`);
+      try {
+        transcript = await fetchTranscript(video.videoId);
+      } catch (err) {
+        transcriptError = err.message;
+        transcript = [];
+      }
+    }
   }
 
-  // Step 2: Fetch transcript
-  let transcript = [];
-  let transcriptError = null;
-  try {
-    console.error(`  Fetching transcript for ${video.videoId}...`);
-    transcript = await fetchTranscript(video.videoId);
-    console.error(`  Transcript: ${transcript.length} segments`);
-  } catch (err) {
-    transcriptError = err.message;
-    console.error(`  Warning: transcript unavailable — ${err.message}`);
-    transcript = [];
-  }
-
-  // Step 3: Fetch Discord posts
+  // Step 2: Fetch Discord posts
   let posts = [];
   if (discordChannel) {
     const windowStart = video.publishedAt.getTime() - SHOW_WINDOW_HOURS * 3600 * 1000;

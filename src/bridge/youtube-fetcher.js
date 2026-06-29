@@ -83,11 +83,18 @@ export function parseCaptionEvents(events) {
 }
 
 /**
- * Find the most recent video published within the given time window.
+ * Find videos published within the given time window, ranked by likelihood of
+ * being the main Chart Hackers daily show. Returns all candidates in ranked
+ * order so callers can try each until they find one with a real transcript.
+ *
+ * Scoring:
+ *   0 — likely non-show content (promos, urgent updates, pre-market flashes)
+ *   1 — neutral title
+ *   2 — looks like the main daily show (contains trading keywords)
  *
  * @param {string} channelId - YouTube channel ID (e.g. "UCxxxxxx")
  * @param {number} [windowHours=36] - How many hours back to look
- * @returns {Promise<{videoId: string, title: string, publishedAt: Date}|null>}
+ * @returns {Promise<Array<{videoId: string, title: string, publishedAt: Date}>>}
  */
 export async function findLatestVideo(channelId, windowHours = 36) {
   const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
@@ -97,32 +104,30 @@ export async function findLatestVideo(channelId, windowHours = 36) {
   }
   const xml = await res.text();
 
-  // Find all <entry> blocks and parse them
   const entryRe = /<entry>([\s\S]*?)<\/entry>/g;
   const entries = [];
-
   let match;
   while ((match = entryRe.exec(xml)) !== null) {
     const parsed = parseRssEntry(match[1]);
     if (parsed) entries.push(parsed);
   }
 
-  // Filter to the time window
   const recent = filterByWindow(entries, windowHours);
-  if (recent.length === 0) return null;
+  if (recent.length === 0) return [];
 
-  // Prefer main show videos over short urgent-update posts.
-  // Short-format posts (🚨, "URGENT", "PRE MARKET") are deprioritised;
-  // among equally-scored candidates the most recent wins.
-  const URGENT_RE = /urgent|pre\s*market|🚨/i;
+  // Deprioritise obvious non-show content (promos, urgent alerts, shorts).
+  const LOW_RE = /urgent|pre\s*market|🚨|new channel|coming soon|announcement|subscribe|follow us/i;
+  // Prefer videos that look like the main daily trading show.
+  const SHOW_RE = /btc|bitcoin|crypto|trade|setup|long|short|chart hackers|market|analysis/i;
+
   const scored = recent.map(e => ({
     entry: e,
-    score: URGENT_RE.test(e.title) ? 0 : 1,
+    score: LOW_RE.test(e.title) ? 0 : SHOW_RE.test(e.title) ? 2 : 1,
   }));
   scored.sort((a, b) =>
     b.score - a.score || b.entry.publishedAt - a.entry.publishedAt
   );
-  return scored[0].entry;
+  return scored.map(s => s.entry);
 }
 
 /**
