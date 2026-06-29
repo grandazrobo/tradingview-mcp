@@ -66,18 +66,20 @@ export async function fetchMTFContext(symbol) {
         await pane.setSymbol({ index: p.index, symbol });
         await new Promise(r => setTimeout(r, 6000)); // wait for indicators to reload (6s for encrypted oscillators)
 
-        const [studyResult, linesResult, labelsResult] = await Promise.allSettled([
+        const [studyResult, linesResult, labelsResult, poLinesResult] = await Promise.allSettled([
           data.getStudyValues(),
           data.getPineLines({}),
           data.getPineLabels({}),
+          data.getPineLines({ study_filter: 'Prime Oscillators', verbose: true }),
         ]);
 
         mtf.push({
           timeframe: tf,
           pane_index: p.index,
-          studies: studyResult.status === 'fulfilled' ? studyResult.value?.studies ?? [] : [],
-          levels:  linesResult.status  === 'fulfilled' ? linesResult.value?.lines   ?? [] : [],
-          labels:  labelsResult.status === 'fulfilled' ? labelsResult.value?.labels  ?? [] : [],
+          studies:  studyResult.status   === 'fulfilled' ? studyResult.value?.studies   ?? [] : [],
+          levels:   linesResult.status   === 'fulfilled' ? linesResult.value?.studies   ?? [] : [],
+          labels:   labelsResult.status  === 'fulfilled' ? labelsResult.value?.labels   ?? [] : [],
+          poLines:  poLinesResult.status === 'fulfilled' ? poLinesResult.value?.studies ?? [] : [],
         });
       } catch (e) {
         mtf.push({ timeframe: tf, pane_index: p.index, error: e.message });

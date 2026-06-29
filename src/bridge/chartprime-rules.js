@@ -44,6 +44,18 @@ function primeOscZone(plot) {
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 
+// Extract the current Prime Oscillator value from pine lines data.
+// The indicator draws non-horizontal lines between bars — the y2 of the line
+// with the highest x2 is the current bar's value.
+function getPOValueFromLines(poLines) {
+  const study = poLines?.find(s => s.name?.toLowerCase().includes('prime oscillators'));
+  if (!study?.all_lines?.length) return null;
+  const mostRecent = study.all_lines.reduce((best, line) =>
+    (line.x2 ?? -Infinity) > (best?.x2 ?? -Infinity) ? line : best, null);
+  const val = mostRecent?.y2;
+  return (val != null && !isNaN(Number(val))) ? Number(val) : null;
+}
+
 const TF_GROUPS = {
   '4h':  ['240', '4h', '4H'],
   '1h':  ['60', '1h', '1H'],
@@ -90,7 +102,8 @@ export function assessChartPrime(card, mtfContext, currentPrice) {
     const mdp4h = findStudy(pane4h.studies, 'Market Dynamics');
 
     // Prime Oscillator momentum (weight ×2 — primary momentum signal)
-    const poPlot = po4h?.values?.Plot;
+    // Pine lines give the real bar value; Data Window only exposes the static midline (50).
+    const poPlot = getPOValueFromLines(pane4h.poLines) ?? po4h?.values?.Plot;
     const poZone = primeOscZone(poPlot);
     if (poZone) {
       const label = `(${fmtNum(poPlot)})`;
@@ -150,7 +163,7 @@ export function assessChartPrime(card, mtfContext, currentPrice) {
 
   if (pane1d) {
     const po1d = findStudy(pane1d.studies, 'Prime Oscillators');
-    const poPlot = po1d?.values?.Plot;
+    const poPlot = getPOValueFromLines(pane1d.poLines) ?? po1d?.values?.Plot;
     const poZone = primeOscZone(poPlot);
 
     if (poZone) {
@@ -178,7 +191,7 @@ export function assessChartPrime(card, mtfContext, currentPrice) {
 
   if (pane1h) {
     const po1h = findStudy(pane1h.studies, 'Prime Oscillators');
-    const poPlot = po1h?.values?.Plot;
+    const poPlot = getPOValueFromLines(pane1h.poLines) ?? po1h?.values?.Plot;
     const poZone = primeOscZone(poPlot);
 
     if (poZone && poZone !== 'NEUTRAL') {
@@ -198,7 +211,7 @@ export function assessChartPrime(card, mtfContext, currentPrice) {
 
   if (pane15m) {
     const po15m = findStudy(pane15m.studies, 'Prime Oscillators');
-    const poPlot = po15m?.values?.Plot;
+    const poPlot = getPOValueFromLines(pane15m.poLines) ?? po15m?.values?.Plot;
     const poZone = primeOscZone(poPlot);
 
     if (poZone && poZone !== 'NEUTRAL') {
